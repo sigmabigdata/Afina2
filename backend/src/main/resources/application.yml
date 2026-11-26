@@ -1,30 +1,198 @@
 spring:
   application:
     name: afina2
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 300MB
   datasource:
-    url: ${DB_URL:jdbc:h2:mem:afina2;MODE=PostgreSQL;DB_CLOSE_DELAY=-1}
+    url: ${DB_URL:jdbc:h2:mem:afina2;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;NON_KEYWORDS=KEY,VALUE}
     username: ${DB_USER:sa}
     password: ${DB_PASSWORD:}
+    driver-class-name: ${DB_DRIVER:org.h2.Driver}
+    hikari:
+      pool-name: Afina2HikariPool
+      minimum-idle: 3
+      maximum-pool-size: 15
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      connection-timeout: 30000
+      keepalive-time: 300000
+      connection-test-query: "SELECT 1"
   jpa:
     hibernate:
-      ddl-auto: ${JPA_DDL:create-drop}
+      ddl-auto: ${JPA_DDL_AUTO:create-drop}
+    show-sql: false
     open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 30
+        order_inserts: true
+        order_updates: true
   flyway:
     enabled: ${FLYWAY_ENABLED:false}
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    schemas: public
+    table: flyway_schema_history
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:25}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${MAIL_SMTP_AUTH:false}
+      mail.smtp.ssl.enable: ${MAIL_SSL:false}
+      mail.smtp.starttls.enable: ${MAIL_SMTP_STARTTLS_ENABLE:false}
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
 
 server:
   port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+    session:
+      timeout: ${SESSION_TIMEOUT:600m}
+      cookie:
+        name: AFINA2SESSION
+        http-only: true
+        secure: ${SECURE_COOKIES:false}
+        same-site: lax
+  error:
+    whitelabel:
+      enabled: false
+    include-message: never
+    include-stacktrace: never
   forward-headers-strategy: framework
+  tomcat:
+    connection-timeout: 60000
+    keep-alive-timeout: 60000
+    max-keep-alive-requests: 200
+    threads:
+      max: 200
+      min-spare: 20
+
+spring.lifecycle:
+  timeout-per-shutdown-phase: 30s
+
+app:
+  base-url: ${APP_BASE_URL:http://localhost:5173}
+  storage-path: ${APP_STORAGE_PATH:./storage/documents}
+  backup-path: ${APP_BACKUP_PATH:./storage/backups}
+  backups-path: ${APP_BACKUP_PATH:./storage/backups}
+  logs-path: ${APP_LOGS_PATH:./storage/logs}
+  crl-path: ${CRL_DIR:./certs/crls}
+  certificates-path: ${CERTS_DIR:./certs}
+  crl-max-age-hours: ${CRL_MAX_AGE_HOURS:12}
+  admins-file: ${ADMINS_FILE:./secrets/admins.env}
+  keys-path: ${KEYS_DIR:./secrets/keys}
+  keys-dir: ${KEYS_DIR:./secrets/keys}
+  file-encryption-key-path: ${FILE_ENCRYPTION_KEY_PATH:./secrets/file.key}
+  pii-key-path: ${PII_KEY_PATH:./secrets/pii.key}
+  db-superuser: ${DB_SUPERUSER:}
+  db-superuser-password: ${DB_SUPERUSER_PASSWORD:}
+  admin-ip-whitelist: ${ADMIN_IP_WHITELIST:*}
+  truststore-path: ${TRUSTSTORE_PATH:./certs/truststore.jks}
+  truststore-password: ${TRUSTSTORE_PASSWORD:}
+  cors-origins: ${APP_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+  mail:
+    mode: ${MAIL_MODE:log}
+    from: ${MAIL_FROM:noreply@localhost}
+    from-name: ${MAIL_FROM_NAME:Афина}
+  notify:
+    document-signed: ${APP_NOTIFY_DOCUMENT_SIGNED:true}
+  signature:
+    require-crl-signature: ${APP_SIGNATURE_REQUIRE_CRL_SIGNATURE:false}
+    attachment:
+      require-chain: ${SIGNATURE_ATTACHMENT_REQUIRE_CHAIN:true}
+  demo:
+    enabled: ${APP_DEMO_ENABLED:false}
+  seed:
+    enabled: ${APP_SEED_ENABLED:false}
+  dev-login:
+    enabled: ${APP_DEV_LOGIN_ENABLED:false}
+    url: ${APP_DEMO_URL:}
+  setup:
+    mode: false
+    token: ""
+    out-dir: /app/setup-out
+    session-ttl-minutes: 60
+  gosklyuch:
+    enabled: ${GOSKLYUCH_ENABLED:false}
+    provider: ${GOSKLYUCH_PROVIDER:disabled}
+    signer: ${GOSKLYUCH_SIGNER:unavailable}
+    p12-path: ${GOSKLYUCH_P12_PATH:}
+    p12-password: ${GOSKLYUCH_P12_PASSWORD:}
+    p12-alias: ${GOSKLYUCH_P12_ALIAS:}
+    p12-provider: ${GOSKLYUCH_P12_PROVIDER:}
+    base-url: ${GOSKLYUCH_BASE_URL:}
+    auth-header: ${GOSKLYUCH_AUTH_HEADER:Authorization}
+    auth-prefix: ${GOSKLYUCH_AUTH_PREFIX:Bearer }
+    token: ${GOSKLYUCH_TOKEN:}
+    token-file: ${GOSKLYUCH_TOKEN_FILE:}
+    region: ${GOSKLYUCH_REGION:}
+    service-code: ${GOSKLYUCH_SERVICE_CODE:}
+    target-code: ${GOSKLYUCH_TARGET_CODE:}
+    mnemonic: ${GOSKLYUCH_MNEMONIC:}
+    org-name: ${GOSKLYUCH_ORG_NAME:}
+    service-name: ${GOSKLYUCH_SERVICE_NAME:Отправка документов на подпись в «Госключ»}
+    signature-type: ${GOSKLYUCH_SIGNATURE_TYPE:UNEP}
+    backlink: ${GOSKLYUCH_BACKLINK:https://lk.gosuslugi.ru/notifications}
+    sign-expiration: ${GOSKLYUCH_SIGN_EXPIRATION:24h}
+    max-documents: ${GOSKLYUCH_MAX_DOCUMENTS:15}
+    max-package-bytes: ${GOSKLYUCH_MAX_PACKAGE_BYTES:104857600}
+    apply-signature: ${GOSKLYUCH_APPLY_SIGNATURE:false}
+    notify-enabled: ${APP_GOSKLYUCH_NOTIFY_ENABLED:false}
+    poll-interval-ms: ${GOSKLYUCH_POLL_INTERVAL_MS:300000}
+    poll-initial-delay-ms: ${GOSKLYUCH_POLL_INITIAL_DELAY_MS:120000}
+    connect-timeout: ${GOSKLYUCH_CONNECT_TIMEOUT:10s}
+    read-timeout: ${GOSKLYUCH_READ_TIMEOUT:60s}
+    chunk-size: ${GOSKLYUCH_CHUNK_SIZE:0}
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info
+      base-path: /actuator
   endpoint:
     health:
+      show-details: never
       probes:
         enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+    mail:
+      enabled: false
 
-app:
-  cors-origins: ${APP_CORS_ORIGINS:http://localhost:5173}
+springdoc:
+  api-docs:
+    path: /api/v1/openapi
+  swagger-ui:
+    path: /api/v1/swagger
+    operations-sorter: alpha
+    tags-sorter: alpha
+
+logging:
+  level:
+    root: INFO
+    ru.afina: DEBUG
+    org.springframework.security: INFO
+    org.hibernate.SQL: WARN
+    ru.CryptoPro: INFO
+    com.zaxxer.hikari: WARN

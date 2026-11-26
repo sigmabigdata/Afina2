@@ -10,15 +10,22 @@ import StatCard from '../components/StatCard';
 import PageHeader from '../components/PageHeader';
 import { OrderStatus } from '../components/StatusTag';
 import { useApp } from '../lib/store';
-import { chartData } from '../lib/mock';
 import UploadModal from '../components/UploadModal';
 import type { DocumentItem } from '../lib/types';
 
 export default function DashboardPage() {
-  const { documents, folders, orders, user } = useApp();
+  const { documents, folders, orders, user: currentUser, dashboard } = useApp();
+  const user = currentUser ?? { name: '', role: 'client' as const, email: '' };
   const navigate = useNavigate();
   const [uploadOpen, setUploadOpen] = useState(false);
-  const signed = documents.filter((d) => d.status === 'signed').length;
+  const signed = dashboard?.documentsSigned ?? documents.filter((d) => d.status === 'signed').length;
+  const unsigned = dashboard?.documentsUnsigned ?? documents.filter((d) => d.status === 'unsigned').length;
+  const total = dashboard?.documentsTotal ?? documents.length;
+  // Обращение по имени: в ФИО «Фамилия Имя Отчество» имя — второе слово
+  const parts = user.name.trim().split(/\s+/);
+  const firstName = parts.length >= 2 ? parts[1] : parts[0];
+  const signedPercent = total ? Math.round((signed / total) * 100) : 0;
+  const chartData = (dashboard?.activity ?? []).map((p) => ({ day: p.label, signed: p.signed, uploaded: p.uploaded }));
 
   const columns = [
     {
@@ -39,7 +46,7 @@ export default function DashboardPage() {
   return (
     <>
       <PageHeader
-        title={`Добрый день, ${user.name.split(' ')[0]}`}
+        title={`Добрый день, ${firstName}`}
         subtitle="Вот что происходит с документами сегодня"
         extra={<>
           <Button icon={<UploadOutlined />} onClick={() => setUploadOpen(true)}>Загрузить</Button>
@@ -48,7 +55,7 @@ export default function DashboardPage() {
       />
 
       <div className="hero">
-        <Tag color="rgba(255,255,255,.18)" style={{ color: '#fff', border: 'none', borderRadius: 999 }}>Afina2 · preview</Tag>
+        <Tag color="rgba(255,255,255,.18)" style={{ color: '#fff', border: 'none', borderRadius: 999 }}>Afina2 · КриптоПро · Госключ</Tag>
         <h2>Подписание без трения.<br />Документы, подпись и Госключ — в одном окне.</h2>
         <p>КриптоПро CAdES, проверка цепочки и CRL, прозрачный журнал действий. Всё, что нужно банку, — в современном интерфейсе.</p>
         <div className="hero-actions">
@@ -63,10 +70,16 @@ export default function DashboardPage() {
       </div>
 
       <div className="stat-grid" style={{ marginTop: 18 }}>
-        <StatCard icon={<FileTextOutlined />} value={documents.length} label="Документов всего" trend="+12% за неделю" />
-        <StatCard icon={<CheckCircleOutlined />} value={signed} label="Подписано" glow="rgba(16,185,129,.16)" trend={`${Math.round(signed / Math.max(documents.length, 1) * 100)}% от всех`} />
-        <StatCard icon={<SafetyCertificateOutlined />} value={orders.filter((o) => o.status === 'sent').length} label="Заявок в Госключе" glow="rgba(139,92,246,.16)" />
-        <StatCard icon={<RiseOutlined />} value="2,4 ч" label="Среднее время подписания" glow="rgba(245,158,11,.16)" trend="−18% к прошлому месяцу" />
+        <StatCard icon={<FileTextOutlined />} value={total} label="Документов всего"
+          trend={`${folders.length} разделов`} />
+        <StatCard icon={<CheckCircleOutlined />} value={signed} label="Подписано"
+          glow="rgba(16,185,129,.16)" trend={`${signedPercent}% от всех`} />
+        <StatCard icon={<SafetyCertificateOutlined />} value={unsigned} label="Ждут подписи"
+          glow="rgba(139,92,246,.16)"
+          trend={orders.length ? `${orders.filter((o) => o.status === 'sent').length} в Госключе` : 'без заявок'} />
+        <StatCard icon={<RiseOutlined />} value={dashboard?.averageSigningTime ?? '—'}
+          label="Среднее время подписания" glow="rgba(245,158,11,.16)"
+          trend={dashboard?.signaturesToday ? `${dashboard.signaturesToday} сегодня` : 'за всё время'} />
       </div>
 
       <Row gutter={[18, 18]} style={{ marginTop: 18 }}>
@@ -123,10 +136,10 @@ export default function DashboardPage() {
             onKeyDown={(e) => e.key === 'Enter' && navigate('/documents')}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div className="folder-icon">📁</div>
-              <Tag color={f.signed === f.count ? 'success' : 'warning'} style={{ borderRadius: 999 }}>{f.signed}/{f.count}</Tag>
+              <Tag color={f.signedCount === f.documentsCount ? 'success' : 'warning'} style={{ borderRadius: 999 }}>{f.signedCount}/{f.documentsCount}</Tag>
             </div>
             <div style={{ fontWeight: 700, marginTop: 12 }}>{f.name}</div>
-            <div style={{ color: 'var(--muted)', fontSize: 12 }}>{f.count} документов</div>
+            <div style={{ color: 'var(--muted)', fontSize: 12 }}>{f.documentsCount} документов</div>
           </div>
         ))}
       </div>

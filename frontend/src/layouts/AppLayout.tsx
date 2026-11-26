@@ -25,7 +25,7 @@ const titles: Record<string, string> = {
 };
 
 export default function AppLayout() {
-  const { user, dark, toggleTheme } = useApp();
+  const { user: currentUser, dark, toggleTheme, logout } = useApp();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cmdkOpen, setCmdkOpen] = useState(false);
@@ -54,6 +54,12 @@ export default function AppLayout() {
     const match = all.filter((p) => location.pathname.startsWith(p)).sort((a, b) => b.length - a.length)[0];
     return [match ?? '/dashboard'];
   }, [location.pathname]);
+
+  // Layout рендерится под RequireAuth; запасной объект — только для типов
+  const user = currentUser ?? {
+    id: 0, name: '', email: '', role: 'client' as const,
+    profileComplete: true, consentSigned: true, raw: {} as never,
+  };
 
   const title = titles[selected[0]] ?? 'Афина';
 
@@ -149,7 +155,7 @@ export default function AppLayout() {
               menu={{
                 items: [
                   { key: 'profile', icon: <UserOutlined />, label: 'Профиль', onClick: () => navigate('/profile') },
-                  { key: 'logout', icon: <LogoutOutlined />, label: 'Выйти', onClick: () => navigate('/login') },
+                  { key: 'logout', icon: <LogoutOutlined />, label: 'Выйти', onClick: () => { void logout(); } },
                 ],
               }}
               placement="bottomRight"

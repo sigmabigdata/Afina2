@@ -3,7 +3,7 @@ import { ReloadOutlined } from '@ant-design/icons';
 import PageHeader from '../../components/PageHeader';
 import { OrderStatus } from '../../components/StatusTag';
 import { useApp } from '../../lib/store';
-import type { Order } from '../../lib/types';
+import type { OrderRow } from '../../lib/store';
 
 export default function AdminGosklyuchPage() {
   const { orders } = useApp();
@@ -22,7 +22,7 @@ export default function AdminGosklyuchPage() {
           { title: 'Обновлена', dataIndex: 'updatedAt', responsive: ['xl' as const] },
           { title: 'Статус', dataIndex: 'status', render: (s: string) => <OrderStatus status={s} /> },
           {
-            title: 'Действия', key: 'actions', render: (_: unknown, row: Order) => (
+            title: 'Действия', key: 'actions', render: (_: unknown, row: OrderRow) => (
               <Space>
                 <Button size="small" onClick={() => message.success(`Статус заявки ${row.id} обновлён`)}>Обновить</Button>
                 <Button size="small" type="primary" ghost disabled={row.status !== 'signed'}

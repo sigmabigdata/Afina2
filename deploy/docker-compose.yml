@@ -1,41 +1,117 @@
+# ─────────────────────────────────────────────────────────────
+# Afina2 · локальный/серверный стек
+#
+#   cp .env.example .env && docker compose -f deploy/docker-compose.yml --env-file .env up -d --build
+#
+# Для сертифицированного контура образы postgres/angie/backend заменяются
+# на сертифицированные сборки (Astra Linux SE, Angie, PostgreSQL, Axiom JDK).
+# ─────────────────────────────────────────────────────────────
+name: afina2
+
 services:
   postgres:
-    image: postgres:15
+    image: ${POSTGRES_IMAGE:-postgres:15}
+    container_name: afina2-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME:-afina2}
-      POSTGRES_USER: ${DB_USER:-afina}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-change_me}
+      POSTGRES_USER: ${DB_OWNER_USER:-afina2}
+      POSTGRES_PASSWORD: ${DB_OWNER_PASSWORD:?задайте DB_OWNER_PASSWORD}
+      TZ: Europe/Moscow
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-afina} -d ${DB_NAME:-afina2}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_OWNER_USER:-afina2} -d ${DB_NAME:-afina2}"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 12
+      start_period: 20s
+    networks: [afina]
+    # Наружу порт не публикуем: база доступна только backend
+    security_opt: ["no-new-privileges:true"]
 
   backend:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.backend
-    environment:
-      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-afina2}
-      DB_USER: ${DB_USER:-afina}
-      DB_PASSWORD: ${DB_PASSWORD:-change_me}
-      JPA_DDL: validate
-      FLYWAY_ENABLED: "true"
-      JCP_LICENSE: ${JCP_LICENSE:-}
+      args:
+        BASE_IMAGE: ${BACKEND_BASE_IMAGE:-eclipse-temurin:17-jre}
+    image: ${BACKEND_IMAGE:-afina2/backend:1.0.0}
+    container_name: afina2-backend
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: "8080"
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-afina2}
+      DB_USER: ${DB_USER:?задайте DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD:?задайте DB_PASSWORD}
+      DB_MIGRATOR_USER: ${DB_MIGRATOR_USER:?задайте DB_MIGRATOR_USER}
+      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?задайте DB_MIGRATOR_PASSWORD}
+      APP_BASE_URL: ${APP_BASE_URL:?задайте APP_BASE_URL}
+      APP_STORAGE_PATH: /app/storage/documents
+      APP_BACKUP_PATH: /app/backups
+      APP_LOGS_PATH: /app/logs
+      CRL_DIR: /app/crls
+      CERTS_DIR: /app/certs
+      KEYS_DIR: /app/secrets/keys
+      ADMINS_FILE: /app/secrets/admins.env
+      TRUSTSTORE_PATH: /app/certs/truststore.jks
+      TRUSTSTORE_PASSWORD: ${TRUSTSTORE_PASSWORD:-}
+      ADMIN_IP_WHITELIST: ${ADMIN_IP_WHITELIST:-127.0.0.1,::1}
+      SECURE_COOKIES: ${SECURE_COOKIES:-true}
+      APP_CORS_ORIGINS: ""
+      MAIL_MODE: ${MAIL_MODE:-log}
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-25}
+      MAIL_FROM: ${MAIL_FROM:-noreply@company.ru}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Афина}
+      GOSKLYUCH_ENABLED: ${GOSKLYUCH_ENABLED:-false}
+      GOSKLYUCH_PROVIDER: ${GOSKLYUCH_PROVIDER:-disabled}
+      GOSKLYUCH_SIGNER: ${GOSKLYUCH_SIGNER:-unavailable}
+      JAVA_OPTS: ${JAVA_OPTS:--XX:MaxRAMPercentage=75 -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError}
+      TZ: Europe/Moscow
+    volumes:
+      - documents:/app/storage
+      - backups:/app/backups
+      - logs:/app/logs
+      - crls:/app/crls
+      - ${CERTS_DIR_HOST:-./certs}:/app/certs:ro
+      - ${SECRETS_DIR_HOST:-./secrets}:/app/secrets:ro
+    networks: [afina]
+    security_opt: ["no-new-privileges:true"]
+    read_only: false
 
   web:
     build:
       context: ..
       dockerfile: deploy/Dockerfile.frontend
-    ports:
-      - "8088:80"
+      args:
+        BASE_IMAGE: ${ANGIE_IMAGE:-docker.angie.software/angie:1.12.3-alpine}
+    image: ${WEB_IMAGE:-afina2/web:1.0.0}
+    container_name: afina2-web
+    restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ${TLS_DIR_HOST:-./certs/tls}:/etc/angie/tls:ro
+    networks: [afina]
+    security_opt: ["no-new-privileges:true"]
 
 volumes:
   pgdata:
+  documents:
+  backups:
+  logs:
+  crls:
+
+networks:
+  afina:
+    driver: bridge

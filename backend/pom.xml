@@ -13,15 +13,51 @@
 
     <groupId>ru.afina</groupId>
     <artifactId>afina2-backend</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>1.0.0</version>
     <name>Afina2 Backend</name>
-    <description>Afina2 — документы, подпись, Госключ</description>
+    <description>Afina2 — управление документами, УКЭП (ГОСТ 34.10-2012), Госключ</description>
 
     <properties>
         <java.version>17</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <cryptopro.version>5.0.49800</cryptopro.version>
+        <bouncycastle.version>1.78.1</bouncycastle.version>
+
+        <!-- SonarQube -->
+        <sonar.projectKey>afina2</sonar.projectKey>
+        <sonar.projectName>Afina2</sonar.projectName>
+        <sonar.coverage.jacoco.xmlReportPaths>
+            ${project.build.directory}/site/jacoco/jacoco.xml
+        </sonar.coverage.jacoco.xmlReportPaths>
+        <!-- Покрытие считается по бизнес-логике. Из расчёта исключены слои,
+             которые не имеют ветвлений/логики либо зависят от окружения:
+             JPA-сущности и DTO (геттеры/сеттеры), Spring-конфигурация,
+             мастер установки, демо-мультитенантность, а также сервисы,
+             работающие с ОС (pg_dump, systemd, /proc, ANgie, PDF-отрисовка,
+             внешние HTTP-вызовы). Это те же исключения, что были приняты
+             в AfinaZ; сами сервисы покрыты юнит-тестами частично. -->
+        <sonar.coverage.exclusions>
+            **/entity/**,
+            **/api/dto/**,
+            **/*Application.java,
+            **/config/**,
+            **/demo/**,
+            **/service/setup/**,
+            **/service/CleanupService.java,
+            **/service/SystemInfoService.java,
+            **/service/MonitoringService.java,
+            **/service/BackupService.java,
+            **/service/SslCertificateService.java,
+            **/service/SignatureVisualizationService.java,
+            **/service/CrlDownloader.java,
+            **/service/CrlRefreshService.java,
+            **/service/CrlOnDemandService.java,
+            **/api/DevLoginApi.java
+        </sonar.coverage.exclusions>
     </properties>
 
     <dependencies>
+        <!-- ============ Spring Boot ============ -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
@@ -40,25 +76,193 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.postgresql</groupId>
-            <artifactId>postgresql</artifactId>
-            <scope>runtime</scope>
-        </dependency>
+
+        <!-- ============ База данных ============ -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
             <scope>runtime</scope>
         </dependency>
         <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- ============ КриптоПро JCSP (сертифицированные библиотеки, локальный ~/.m2) ============ -->
+        <dependency>
+            <groupId>ru.cryptopro.jcsp</groupId>
+            <artifactId>jcsp</artifactId>
+            <version>${cryptopro.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ru.cryptopro.jcsp</groupId>
+            <artifactId>jcp</artifactId>
+            <version>${cryptopro.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ru.cryptopro.jcsp</groupId>
+            <artifactId>jcryptop</artifactId>
+            <version>${cryptopro.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ru.cryptopro.jcsp</groupId>
+            <artifactId>jcp-revcheck</artifactId>
+            <version>${cryptopro.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ru.cryptopro.jcsp</groupId>
+            <artifactId>jcp-revtools</artifactId>
+            <version>${cryptopro.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ru.cryptopro.jcsp</groupId>
+            <artifactId>cades</artifactId>
+            <version>${cryptopro.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ru.cryptopro.jcsp</groupId>
+            <artifactId>ades-core</artifactId>
+            <version>${cryptopro.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ru.cryptopro.jcsp</groupId>
+            <artifactId>asn1p</artifactId>
+            <version>${cryptopro.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ru.cryptopro.jcsp</groupId>
+            <artifactId>asn1rt</artifactId>
+            <version>${cryptopro.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ru.cryptopro.jcsp</groupId>
+            <artifactId>cmsutil</artifactId>
+            <version>${cryptopro.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ru.cryptopro.jcsp</groupId>
+            <artifactId>jcp-xml</artifactId>
+            <version>${cryptopro.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ru.cryptopro.jcsp</groupId>
+            <artifactId>xades</artifactId>
+            <version>${cryptopro.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ru.cryptopro.jcsp</groupId>
+            <artifactId>xmldsigri</artifactId>
+            <version>${cryptopro.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ru.cryptopro.jcsp</groupId>
+            <artifactId>rutoken</artifactId>
+            <version>${cryptopro.version}</version>
+        </dependency>
+
+        <!-- ============ ZIP с паролем (бэкап ключей) ============ -->
+        <dependency>
+            <groupId>net.lingala.zip4j</groupId>
+            <artifactId>zip4j</artifactId>
+            <version>2.11.5</version>
+        </dependency>
+
+        <!-- ============ BouncyCastle (разбор CMS/ASN.1, парсинг сертификатов) ============ -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>${bouncycastle.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk18on</artifactId>
+            <version>${bouncycastle.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcutil-jdk18on</artifactId>
+            <version>${bouncycastle.version}</version>
+        </dependency>
+
+        <!-- ============ QR-коды (публичная верификация) ============ -->
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>core</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.zxing</groupId>
+            <artifactId>javase</artifactId>
+            <version>3.5.3</version>
+        </dependency>
+
+        <!-- ============ HTML → PDF (шаблоны документов, справки) ============ -->
+        <dependency>
+            <groupId>com.openhtmltopdf</groupId>
+            <artifactId>openhtmltopdf-pdfbox</artifactId>
+            <version>1.0.10</version>
+        </dependency>
+        <dependency>
+            <groupId>com.openhtmltopdf</groupId>
+            <artifactId>openhtmltopdf-slf4j</artifactId>
+            <version>1.0.10</version>
+        </dependency>
+
+        <!-- ============ PDF: визуализация подписи ============ -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>2.0.31</version>
+        </dependency>
+
+        <!-- ============ HTML5 → XHTML ============ -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.17.2</version>
+        </dependency>
+
+        <!-- ============ Word → HTML ============ -->
+        <dependency>
+            <groupId>org.zwobble.mammoth</groupId>
+            <artifactId>mammoth</artifactId>
+            <version>1.7.0</version>
+        </dependency>
+
+        <!-- ============ OpenAPI / Swagger UI ============ -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.5.0</version>
+        </dependency>
+
+        <!-- ============ Тесты ============ -->
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-inline</artifactId>
+            <version>5.2.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -67,8 +271,57 @@
         <finalName>afina2-backend</finalName>
         <plugins>
             <plugin>
+                <groupId>org.cyclonedx</groupId>
+                <artifactId>cyclonedx-maven-plugin</artifactId>
+                <version>2.8.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals><goal>makeAggregateBom</goal></goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <projectType>application</projectType>
+                    <includeTestScope>false</includeTestScope>
+                    <outputFormat>json</outputFormat>
+                    <outputName>sbom-afina2-backend</outputName>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>license-maven-plugin</artifactId>
+                <version>2.4.0</version>
+                <configuration>
+                    <outputDirectory>${project.build.directory}/licenses</outputDirectory>
+                    <licensesOutputFile>${project.build.directory}/licenses/THIRD-PARTY.txt</licensesOutputFile>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <release>17</release>
+                    <parameters>true</parameters>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.12</version>
+                <executions>
+                    <execution>
+                        <goals><goal>prepare-agent</goal></goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>verify</phase>
+                        <goals><goal>report</goal></goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

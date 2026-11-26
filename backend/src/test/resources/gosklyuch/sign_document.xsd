@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  XSD файла заявления req.xml — Приложение 1 спецификации API ЕПГУ
+  «Отправка документов на подпись в МП Госключ» v1.8 (20.01.2023).
+  Используется только в тестах для проверки формируемого req.xml.
+-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:tns="urn://mpkey.gosuslugi.ru/sign_document/1.0.0"
+            targetNamespace="urn://mpkey.gosuslugi.ru/sign_document/1.0.0"
+            elementFormDefault="qualified" attributeFormDefault="unqualified">
+    <xsd:element name="SignRequest" type="tns:SignRequestType"/>
+
+    <xsd:complexType name="AttributeType">
+        <xsd:sequence>
+            <xsd:element name="AttributeName" type="tns:string-50"/>
+            <xsd:element name="AttributeValue" type="xsd:normalizedString"/>
+        </xsd:sequence>
+    </xsd:complexType>
+
+    <xsd:complexType name="DocumentType">
+        <xsd:sequence>
+            <xsd:element name="DocumentId" type="tns:string-50"/>
+            <xsd:element name="MimeType" type="tns:string-50"/>
+            <xsd:element name="Description" type="tns:string-250" minOccurs="0"/>
+            <xsd:element name="Backlink" type="tns:string-250" minOccurs="0"/>
+            <xsd:element name="SignExpiration" type="xsd:dateTime" minOccurs="0"/>
+            <xsd:element name="Attribute" type="tns:AttributeType" minOccurs="0" maxOccurs="10"/>
+        </xsd:sequence>
+    </xsd:complexType>
+
+    <xsd:complexType name="SignRequestType">
+        <xsd:sequence>
+            <xsd:element name="Snils" type="tns:string-14"/>
+            <xsd:element name="Document" type="tns:DocumentType" maxOccurs="unbounded"/>
+            <xsd:element name="OID" type="tns:stringNN-20"/>
+        </xsd:sequence>
+    </xsd:complexType>
+
+    <xsd:simpleType name="stringNN-20">
+        <xsd:restriction base="xsd:normalizedString">
+            <xsd:minLength value="1"/>
+            <xsd:maxLength value="20"/>
+        </xsd:restriction>
+    </xsd:simpleType>
+
+    <xsd:simpleType name="string-14">
+        <xsd:restriction base="xsd:string">
+            <xsd:maxLength value="14"/>
+        </xsd:restriction>
+    </xsd:simpleType>
+
+    <xsd:simpleType name="string-50">
+        <xsd:restriction base="xsd:string">
+            <xsd:maxLength value="50"/>
+        </xsd:restriction>
+    </xsd:simpleType>
+
+    <xsd:simpleType name="string-250">
+        <xsd:restriction base="xsd:string">
+            <xsd:maxLength value="250"/>
+        </xsd:restriction>
+    </xsd:simpleType>
+</xsd:schema>

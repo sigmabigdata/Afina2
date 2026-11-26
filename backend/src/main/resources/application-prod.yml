@@ -1,0 +1,88 @@
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      pool-name: Afina2HikariPool
+      minimum-idle: 5
+      maximum-pool-size: 20
+      idle-timeout: 300000
+      max-lifetime: 900000
+      connection-timeout: 30000
+      keepalive-time: 120000
+      connection-test-query: "SELECT 1"
+      leak-detection-threshold: 60000
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+  flyway:
+    enabled: true
+    url: ${DB_URL}
+    user: ${DB_MIGRATOR_USER}
+    password: ${DB_MIGRATOR_PASSWORD}
+    baseline-on-migrate: false
+    clean-disabled: true
+    validate-on-migrate: true
+    locations: classpath:db/migration
+    schemas: public
+    table: flyway_schema_history
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 300MB
+
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    session:
+      cookie:
+        secure: ${SECURE_COOKIES:true}
+
+app:
+  base-url: ${APP_BASE_URL}
+  storage-path: ${APP_STORAGE_PATH:/app/storage/documents}
+  backup-path: ${APP_BACKUP_PATH:/app/backups}
+  logs-path: ${APP_LOGS_PATH:/app/logs}
+  crl-path: ${CRL_DIR:/app/crls}
+  certificates-path: ${CERTS_DIR:/app/certs}
+  admins-file: ${ADMINS_FILE:/app/secrets/admins.env}
+  keys-path: ${KEYS_DIR:/app/secrets/keys}
+  truststore-path: ${TRUSTSTORE_PATH:/app/certs/truststore.jks}
+  admin-ip-whitelist: ${ADMIN_IP_WHITELIST:127.0.0.1,::1}
+  cors-origins: ${APP_CORS_ORIGINS:}
+  mail:
+    mode: smtp
+    from: ${MAIL_FROM:noreply@company.ru}
+    from-name: ${MAIL_FROM_NAME:Афина}
+
+crypto:
+  pro:
+    enabled: true
+
+logging:
+  level:
+    root: WARN
+    ru.afina: INFO
+    ru.CryptoPro: INFO
+    org.hibernate.SQL: WARN
+    org.flywaydb: INFO
+  file:
+    name: ${LOG_PATH:/var/log/afina/app.log}
+  logback:
+    rollingpolicy:
+      max-file-size: 100MB
+      max-history: 30
+      total-size-cap: 3GB
+  pattern:
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    console: "%d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n"
+
+springdoc:
+  api-docs:
+    enabled: ${OPENAPI_ENABLED:false}
+  swagger-ui:
+    enabled: ${OPENAPI_ENABLED:false}

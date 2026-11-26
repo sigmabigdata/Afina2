@@ -35,7 +35,7 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
   };
 
   return (
-    <Modal open={open} onCancel={onClose} footer={null} width={560} style={{ top: 90 }} destroyOnClose>
+    <Modal open={open} onCancel={onClose} footer={null} width={560} style={{ top: 90 }} destroyOnHidden>
       <Input
         autoFocus
         size="large"

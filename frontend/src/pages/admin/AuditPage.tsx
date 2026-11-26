@@ -3,7 +3,7 @@ import { Card, Input, Select, Space, Table, Tag } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import PageHeader from '../../components/PageHeader';
 import { useApp } from '../../lib/store';
-import type { AuditEvent } from '../../lib/types';
+import type { AuditRow } from '../../lib/store';
 
 export default function AuditPage() {
   const { auditEvents } = useApp();
@@ -33,7 +33,7 @@ export default function AuditPage() {
           { title: 'Пользователь', dataIndex: 'actor' },
           { title: 'Действие', dataIndex: 'action', render: (a: string) => <code style={{ fontSize: 12 }}>{a}</code> },
           { title: 'Объект', dataIndex: 'target', responsive: ['md' as const] },
-          { title: 'Результат', dataIndex: 'result', render: (r: AuditEvent['result']) => (
+          { title: 'Результат', dataIndex: 'result', render: (r: AuditRow['result']) => (
             <Tag color={r === 'success' ? 'success' : r === 'warn' ? 'warning' : 'error'} style={{ borderRadius: 999 }}>
               {r === 'success' ? 'Успех' : r === 'warn' ? 'Внимание' : 'Ошибка'}
             </Tag>

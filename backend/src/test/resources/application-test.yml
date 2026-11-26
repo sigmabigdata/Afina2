@@ -1,0 +1,49 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;NON_KEYWORDS=KEY,VALUE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+  flyway:
+    enabled: false
+
+app:
+  base-url: http://localhost:5173
+  storage-path: /tmp/afina2-test-storage
+  backup-path: /tmp/afina2-test-backups
+  logs-path: /tmp/afina2-test-logs
+  crl-path: /tmp/afina2-test-crls
+  certificates-path: /tmp/afina2-test-certs
+  admins-file: /tmp/afina2-test-admins.env
+  keys-path: /tmp/afina2-test-keys
+  truststore-path: /tmp/afina2-test-certs/truststore.jks
+  admin-ip-whitelist: "*"
+  cors-origins: http://localhost:5173
+  mail:
+    mode: log
+    from: noreply@test.local
+    from-name: Test
+  notify:
+    document-signed: false
+  demo:
+    enabled: false
+  gosklyuch:
+    enabled: false
+    provider: disabled
+    signer: unavailable
+
+crypto:
+  pro:
+    enabled: false
+
+logging:
+  level:
+    root: WARN
+    ru.afina: INFO

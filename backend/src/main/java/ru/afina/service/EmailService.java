@@ -1,0 +1,239 @@
+package ru.afina.service;
+
+
+import jakarta.mail.internet.MimeMessage;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.JavaMailSenderImpl;
+import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.stereotype.Service;
+import ru.afina.security.PiiEncryptor;
+import ru.afina.security.PiiMask;
+
+import java.util.Properties;
+
+@Service
+public class EmailService {
+
+    private static final Logger log = LoggerFactory.getLogger(EmailService.class);
+
+    private static final String PROP_SSL_ENABLE = "mail.smtp.ssl.enable";
+    private static final String PROP_STARTTLS_ENABLE = "mail.smtp.starttls.enable";
+    private static final String BOOL_FALSE = "false";
+
+    /** Fallback: Spring Boot JavaMailSender из application-prod.yml (.env.prod) */
+    private final ObjectProvider<JavaMailSender> mailSenderProvider;
+    private final SettingsService settings;
+    private final PiiEncryptor pii;
+    private final AuditService audit;
+
+    @Value("${app.mail.mode:log}")
+    private String mode;
+
+    @Value("${app.mail.from:noreply@example.com}")
+    private String fromEnv;
+
+    public EmailService(ObjectProvider<JavaMailSender> mailSenderProvider,
+                        SettingsService settings,
+                        PiiEncryptor pii,
+                        AuditService audit) {
+        this.mailSenderProvider = mailSenderProvider;
+        this.settings = settings;
+        this.pii = pii;
+        this.audit = audit;
+    }
+
+    private static final String DEFAULT_LOGIN_SUBJECT =
+            "Афина · Ссылка для входа";
+    private static final String DEFAULT_LOGIN_BODY =
+            "Здравствуйте, {user_name}!\n\n"
+            + "Для входа в личный кабинет перейдите по ссылке:\n"
+            + "{token_url}\n\n"
+            + "Ссылка действует {expires_hours} часов и может быть использована один раз.\n"
+            + "Если вы не запрашивали вход — просто проигнорируйте это письмо.";
+
+    /**
+     * Отправка magic-link. Тема/тело/TTL берутся из app_settings
+     * (email.login.subject, email.login.body, auth.token_ttl_hours),
+     * с фолбэком на константы.
+     */
+    public void sendLoginLink(String to, String loginUrl, String userName) {
+        int ttlHours = settings.getIntOrDefault("auth.token_ttl_hours", 10);
+        String subject = settings.getOrDefault("email.login.subject", DEFAULT_LOGIN_SUBJECT);
+        String bodyTpl = settings.getOrDefault("email.login.body", DEFAULT_LOGIN_BODY);
+
+        String nameForBody = (userName != null && !userName.isBlank()) ? userName : "пользователь";
+        String renderedSubject = subject.replace("{user_name}", nameForBody);
+        String body = bodyTpl
+                .replace("{user_name}", nameForBody)
+                .replace("{token_url}", loginUrl)
+                .replace("{expires_hours}", String.valueOf(ttlHours))
+                .replace("\\n", System.lineSeparator());
+
+        send(to, renderedSubject, body);
+    }
+
+    /** Совместимость со старым API. */
+    public void sendLoginLink(String to, String loginUrl) {
+        sendLoginLink(to, loginUrl, null);
+    }
+
+    /**
+     * Алерт мониторинга. Тема и тело формируются MonitoringService
+     * из шаблонов alert.subject / alert.body (редактируются в /admin/settings).
+     */
+    public void sendAlert(String to, String subject, String body) {
+        send(to, subject, body);
+    }
+
+    /** Тестовое письмо — для кнопки "Проверить" в UI. */
+    public void sendTest(String to) {
+        String subject = "Афина · Тестовое письмо";
+        String body = """
+                Это тестовое письмо от сервиса Афина.
+
+                Если вы его видите — SMTP настроен корректно.
+                Отправлено: %s
+                """.formatted(java.time.LocalDateTime.now()).replace("\n", System.lineSeparator());
+
+        // Тестовое письмо всегда уходит, даже в режиме log
+        sendWithOverride(to, subject, body, true);
+    }
+
+    // ==================== ядро ====================
+
+    private void send(String to, String subject, String body) {
+        sendWithOverride(to, subject, body, false);
+    }
+
+    private void sendWithOverride(String to, String subject, String body, boolean forceSend) {
+        JavaMailSender sender = resolveSender(forceSend);
+
+        if (sender == null) {
+            if (log.isWarnEnabled()) {
+                log.warn("""
+                        
+                        ============================================================
+                        [DEV-MAIL] Кому : {}
+                        [DEV-MAIL] Тема : {}
+                        [DEV-MAIL] Тело :
+                        {}
+                        ============================================================
+                        """, PiiMask.email(to), subject, PiiMask.tokens(body));
+            }
+            audit.emailSent(to, subject, "dev-mode");
+            return;
+        }
+
+        String from = resolveFrom();
+        try {
+            MimeMessage msg = sender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(msg, false, "UTF-8");
+            helper.setFrom(from);
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(body, false);
+            sender.send(msg);
+            log.info("Email sent to {} (from {})", to, from);
+            audit.emailSent(to, subject);
+        } catch (Exception e) {
+            log.warn("[FALLBACK-MAIL] Кому: {}, subject: {}\n{}",
+                    PiiMask.email(to), subject, PiiMask.tokens(body));
+            audit.emailFail(to, subject, e.getMessage());
+            // Не логируем e.error-ом здесь: throw ниже отдаст исключение
+            // наверх, там его залогирует вызывающий код. Так избегаем
+            // двойного логирования одной и той же ошибки (S2139).
+            throw new IllegalStateException(
+                    "SMTP: не удалось отправить письмо на " + to
+                    + " (subject: " + subject + "): " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Возвращает JavaMailSender.
+     * <p>Приоритет: <b>.env.prod (spring.mail.*)</b> → app_settings.smtp.* → null.
+     * <p>Раньше было наоборот: если админ открывал /admin/settings и сохранял
+     * что-то в форме SMTP, в БД появлялся smtp.host и приложение начинало
+     * игнорировать .env.prod. Плюс в buildFromSettings() был жёстко зашит
+     * {@code mail.smtp.auth=true} — при пустом пароле это давало 535.
+     */
+    private JavaMailSender resolveSender(boolean force) {
+        JavaMailSender envSender = mailSenderProvider.getIfAvailable();
+
+        // 1) Основной путь — spring.mail.* из .env.prod.
+        //    Считаем «настроенным», если host задан и это не localhost-заглушка.
+        if (isEnvConfigured(envSender)) {
+            return envSender;
+        }
+
+        // 2) Fallback — настройки из БД (legacy/override, только если .env пуст).
+        if (settings.isSmtpConfigured()) {
+            return buildFromSettings();
+        }
+
+        // 3) Нет SMTP вообще.
+        if (!force && !"smtp".equalsIgnoreCase(mode)) {
+            return null;
+        }
+        return envSender;
+    }
+
+    /** true, если spring.mail.* из .env.prod задан осмысленно (не localhost). */
+    private static boolean isEnvConfigured(JavaMailSender sender) {
+        if (!(sender instanceof JavaMailSenderImpl impl)) {
+            return false;
+        }
+        String host = impl.getHost();
+        return host != null
+                && !host.isBlank()
+                && !"localhost".equalsIgnoreCase(host)
+                && !"127.0.0.1".equals(host);
+    }
+
+    private JavaMailSenderImpl buildFromSettings() {
+        JavaMailSenderImpl impl = new JavaMailSenderImpl();
+        impl.setHost(settings.getOrDefault("smtp.host", ""));
+        impl.setPort(settings.getIntOrDefault("smtp.port", 25));
+
+        String username = settings.getOrDefault("smtp.username", "");
+        String pwd = settings.getSmtpPasswordDecrypted(pii);
+
+        // auth=true только если задан username (иначе Postfix на 25 без auth).
+        boolean needAuth = !username.isBlank();
+        if (needAuth) {
+            impl.setUsername(username);
+            impl.setPassword(pwd);
+        }
+        impl.setDefaultEncoding("UTF-8");
+
+        // ssl=true → implicit SSL (465); ssl=false → STARTTLS или plain (25/587)
+        boolean ssl = settings.getBoolOrDefault("smtp.ssl", false);
+        Properties props = impl.getJavaMailProperties();
+        props.put("mail.transport.protocol", "smtp");
+        props.put("mail.smtp.auth", String.valueOf(needAuth));
+        props.put("mail.smtp.connectiontimeout", "5000");
+        props.put("mail.smtp.timeout", "10000");
+        props.put("mail.smtp.writetimeout", "10000");
+        if (ssl) {
+            props.put(PROP_SSL_ENABLE, "true");
+            props.put(PROP_STARTTLS_ENABLE, BOOL_FALSE);
+        } else if (needAuth) {
+            // 587 + auth → STARTTLS обязателен
+            props.put(PROP_STARTTLS_ENABLE, "true");
+            props.put(PROP_SSL_ENABLE, BOOL_FALSE);
+        } else {
+            // 25 plain без auth (relay по mynetworks)
+            props.put(PROP_SSL_ENABLE, BOOL_FALSE);
+            props.put(PROP_STARTTLS_ENABLE, BOOL_FALSE);
+        }
+        return impl;
+    }
+
+    private String resolveFrom() {
+        String fromDb = settings.getOrDefault("smtp.from", "");
+        return fromDb.isBlank() ? fromEnv : fromDb;
+    }
+}

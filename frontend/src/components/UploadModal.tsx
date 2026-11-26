@@ -1,36 +1,47 @@
 import { useState } from 'react';
-import { App, Button, Form, Input, Modal, Select, Upload } from 'antd';
+import { App, Button, Form, Modal, Select, Upload } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
 import { useApp } from '../lib/store';
 
-export default function UploadModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { addDocument, folders } = useApp();
+/**
+ * Загрузка документа в раздел. Раздел можно создать прямо здесь —
+ * у нового клиента разделов может не быть.
+ */
+export default function UploadModal({
+  open, onClose, defaultFolderId,
+}: { open: boolean; onClose: () => void; defaultFolderId?: number }) {
+  const { folders, uploadDocument, refreshFolders } = useApp();
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const submit = async () => {
+    if (!file) {
+      message.warning('Выберите файл');
+      return;
+    }
     const values = await form.validateFields();
-    addDocument({
-      id: Date.now(),
-      name: file?.name ?? 'Новый документ.pdf',
-      folder: values.folder,
-      size: file ? `${(file.size / 1024 / 1024).toFixed(1)} МБ` : '—',
-      uploadedAt: new Date().toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }),
-      status: 'unsigned',
-      type: file?.name.endsWith('.docx') ? 'docx' : 'pdf',
-      signers: [],
-    });
-    message.success('Документ загружен');
-    form.resetFields();
-    setFile(null);
-    onClose();
+    setBusy(true);
+    try {
+      await uploadDocument(file, values.folderId);
+      message.success('Документ загружен');
+      form.resetFields();
+      setFile(null);
+      onClose();
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : 'Не удалось загрузить документ');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
-    <Modal open={open} onCancel={onClose} title="Загрузить документ" footer={null} width={520} destroyOnClose>
+    <Modal open={open} onCancel={onClose} title="Загрузить документ" footer={null}
+      width={520} destroyOnHidden>
       <Upload.Dragger
         beforeUpload={(f) => { setFile(f); return false; }}
+        onRemove={() => setFile(null)}
         maxCount={1}
         style={{ borderRadius: 16, marginBottom: 16 }}
       >
@@ -38,15 +49,33 @@ export default function UploadModal({ open, onClose }: { open: boolean; onClose:
         <p className="ant-upload-text">Перетащите файл или нажмите</p>
         <p className="ant-upload-hint">PDF, DOCX, XML, TXT · до 50 МБ</p>
       </Upload.Dragger>
-      <Form form={form} layout="vertical" initialValues={{ folder: folders[0]?.name }}>
-        <Form.Item name="folder" label="Раздел" rules={[{ required: true }]}>
-          <Select options={folders.map((f) => ({ value: f.name, label: f.name }))} />
+      <Form form={form} layout="vertical"
+        initialValues={{ folderId: defaultFolderId ?? folders[0]?.id }}>
+        <Form.Item name="folderId" label="Раздел" rules={[{ required: true, message: 'Выберите раздел' }]}>
+          <Select
+            placeholder="Выберите раздел"
+            options={folders.map((f) => ({ value: f.id, label: f.name }))}
+            notFoundContent="Разделов пока нет"
+          />
         </Form.Item>
-        <Form.Item name="name" label="Название (необязательно)">
-          <Input placeholder="Например, договор поставки" />
-        </Form.Item>
-        <Button type="primary" block size="large" onClick={submit}>Загрузить</Button>
+        <Button type="primary" block size="large" onClick={submit} loading={busy}>
+          Загрузить
+        </Button>
       </Form>
+      <Button
+        type="link"
+        style={{ marginTop: 8, paddingLeft: 0 }}
+        onClick={async () => {
+          try {
+            await refreshFolders();
+            message.info('Список разделов обновлён. Создать раздел можно в админке или через API.');
+          } catch {
+            message.error('Не удалось обновить разделы');
+          }
+        }}
+      >
+        Обновить список разделов
+      </Button>
     </Modal>
   );
 }
