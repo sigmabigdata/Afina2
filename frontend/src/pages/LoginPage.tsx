@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, App, Button, Divider, Form, Input, Typography } from 'antd';
 import {
   ArrowRightOutlined, LockOutlined, MailOutlined, SafetyCertificateOutlined,
@@ -6,6 +6,7 @@ import {
 } from '@ant-design/icons';
 import { useSearchParams } from 'react-router-dom';
 import CertLoginModal from '../components/CertLoginModal';
+import { loadCryptoPro } from '../lib/cryptopro';
 import Logo from '../components/Logo';
 import { useApp } from '../lib/store';
 
@@ -18,6 +19,12 @@ export default function LoginPage() {
   const [certOpen, setCertOpen] = useState(false);
 
   const tokenError = params.get('error') === 'token';
+
+  // Прогреваем плагин КриптоПро, пока пользователь вводит почту:
+  // окно входа по сертификату открывается уже с готовым плагином
+  useEffect(() => {
+    void loadCryptoPro().catch(() => undefined);
+  }, []);
   const demoUrl = import.meta.env.VITE_DEMO_URL as string | undefined;
 
   const onFinish = async ({ email }: { email: string }) => {
