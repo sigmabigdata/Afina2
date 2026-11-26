@@ -3,12 +3,29 @@ import { Alert, App, Button, Input, Modal, Select, Space, Tag, Typography } from
 import { CloseCircleFilled, SafetyCertificateOutlined } from '@ant-design/icons';
 import { api } from '../lib/api';
 import {
-  CryptoProError, isCryptoProAvailable, listCertificates, signDetached, toBase64,
-  type CertificateInfo,
+  CryptoProError, diagnosePlugin, isCryptoProAvailable, listCertificates, signDetached,
+  toBase64, type CertificateInfo, type PluginDiagnostics,
 } from '../lib/cryptopro';
 import { useApp } from '../lib/store';
 
 type Phase = 'loading' | 'ready' | 'signing' | 'error';
+
+/**
+ * Плагин КриптоПро работает только в настольных Chrome/Edge/Firefox/Yandex.
+ * В Safari (и на мобильных) его API недоступен — предупреждаем сразу,
+ * иначе пользователь видит непонятную ошибку.
+ */
+function unsupportedBrowser(): string | null {
+  if (typeof navigator === 'undefined') return null;
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua);
+  const isSafari = /Safari/.test(ua) && !/Chrome|Chromium|Edg|OPR|YaBrowser/.test(ua);
+  if (isIOS) return 'На мобильных устройствах плагин КриптоПро не поддерживается. '
+    + 'Откройте систему на компьютере в Chrome, Edge или Firefox.';
+  if (isSafari) return 'Safari не поддерживает плагин КриптоПро. '
+    + 'Откройте страницу в Chrome, Edge, Firefox или Яндекс.Браузере — вход по сертификату заработает.';
+  return null;
+}
 
 /**
  * Вход сотрудника/администратора по сертификату УКЭП.
@@ -27,10 +44,18 @@ export default function CertLoginModal({
   const [selected, setSelected] = useState<string>();
   const [manualSnils, setManualSnils] = useState('');
   const [error, setError] = useState<string>();
+  const [diag, setDiag] = useState<PluginDiagnostics | null>(null);
+  const [diagBusy, setDiagBusy] = useState(false);
 
   const init = useCallback(async () => {
     setPhase('loading');
     setError(undefined);
+    const browserIssue = unsupportedBrowser();
+    if (browserIssue) {
+      setError(browserIssue);
+      setPhase('error');
+      return;
+    }
     try {
       const available = await isCryptoProAvailable();
       if (!available) {
@@ -162,8 +187,41 @@ export default function CertLoginModal({
             <CloseCircleFilled style={{ fontSize: 44, color: '#ef4444' }} />
           </div>
           <Alert type="error" showIcon message="Войти не удалось" description={error} />
-          <Space>
+          {diag && (
+            <Alert
+              type={diag.responds ? 'success' : 'warning'}
+              showIcon
+              message={diag.responds
+                ? `Плагин работает${diag.version ? `, версия ${diag.version}` : ''}`
+                : 'Плагин недоступен'}
+              description={(
+                <div style={{ fontSize: 12, lineHeight: 1.6 }}>
+                  <div>Скрипт API: {diag.scriptLoaded ? 'загружен' : 'не загружен'}</div>
+                  <div>Объект API: {diag.apiPresent ? 'есть' : 'нет'}</div>
+                  <div>Ответ плагина: {diag.responds ? 'да' : 'нет'}</div>
+                  {diag.error && <div>Ошибка: {diag.error}</div>}
+                  <div style={{ marginTop: 6 }}>
+                    <a href="https://www.cryptopro.ru/products/cades/plugin"
+                      target="_blank" rel="noreferrer">
+                      Установить «КриптоПро ЭЦП Browser plug-in»
+                    </a>
+                  </div>
+                </div>
+              )}
+            />
+          )}
+          <Space wrap>
             <Button onClick={init}>Повторить</Button>
+            <Button loading={diagBusy} onClick={async () => {
+              setDiagBusy(true);
+              try {
+                setDiag(await diagnosePlugin());
+              } finally {
+                setDiagBusy(false);
+              }
+            }}>
+              Диагностика плагина
+            </Button>
             <Button type="primary" onClick={onClose}>Закрыть</Button>
           </Space>
         </Space>

@@ -65,35 +65,80 @@ function resolveApi(): CryptoApi | null {
   return null;
 }
 
-/** Ждёт, пока плагин инициализируется и отдаст рабочий API. */
+/** Проверка работоспособности: реальный вызов к плагину. */
+async function probe(api: CryptoApi): Promise<boolean> {
+  // Старые версии плагина не знают CAdESCOM.About, поэтому пробуем два объекта
+  for (const name of ['CAdESCOM.About', 'CAdESCOM.Store']) {
+    try {
+      const object = await api.CreateObjectAsync(name);
+      if (object) return true;
+    } catch {
+      // пробуем следующий вариант
+    }
+  }
+  return false;
+}
+
+/**
+ * Ждёт, пока плагин инициализируется и начнёт отвечать.
+ *
+ * Важно: `window.cadesplugin` появляется сразу после загрузки скрипта, но его
+ * методы работают только после рукопожатия с расширением. Если расширения нет,
+ * вызов падает с TypeError «Cannot read properties of undefined» — поэтому
+ * готовность проверяется настоящим вызовом CreateObjectAsync.
+ */
 async function waitForApi(timeoutMs = API_TIMEOUT_MS): Promise<CryptoApi> {
   const started = Date.now();
 
-  // Некоторые версии API — thenable: дожидаемся его инициализации
+  // Некоторые версии API — thenable: даём шанс рукопожатию
   const global: any = window.cadesplugin;
   if (global && typeof global.then === 'function') {
     await Promise.race([
       Promise.resolve(global).catch(() => undefined),
-      sleep(Math.min(8000, timeoutMs)),
+      sleep(Math.min(5000, timeoutMs)),
     ]);
   }
 
   while (Date.now() - started < timeoutMs) {
     const api = resolveApi();
-    if (api) return api;
-    await sleep(150);
+    if (api && await probe(api)) return api;
+    await sleep(200);
   }
 
   if (!global) {
     throw new CryptoProError(
       'Плагин КриптоПро не установлен. Установите «КриптоПро ЭЦП Browser plug-in» '
-      + 'и КриптоПро CSP, затем перезапустите браузер.',
+      + 'с сайта cryptopro.ru, затем перезапустите браузер.',
     );
   }
   throw new CryptoProError(
-    'Плагин КриптоПро загружен, но не отвечает. Проверьте, что расширение включено, '
-    + 'а КриптоПро CSP запущен версии 5.0 R2 или новее.',
+    'Расширение КриптоПро не отвечает. Проверьте, что «КриптоПро ЭЦП Browser plug-in» '
+    + 'установлено и включено в браузере, а КриптоПро CSP запущен. '
+    + 'После установки расширения перезапустите браузер.',
   );
+}
+
+/** Ошибка «плагин недоступен» в разных формулировках браузера. */
+function isPluginMissingError(e: unknown): boolean {
+  const message = e instanceof Error ? e.message : String(e);
+  return message.includes('CreateObjectAsync')
+      || message.includes('CreateObject')
+      || message.includes('cadesplugin');
+}
+
+/** Обёртка вызова плагина с понятной ошибкой вместо TypeError. */
+export async function createObject(api: CryptoApi, name: string): Promise<any> {
+  try {
+    return await api.CreateObjectAsync(name);
+  } catch (e) {
+    if (isPluginMissingError(e)) {
+      throw new CryptoProError(
+        'Расширение КриптоПро не отвечает. Установите «КриптоПро ЭЦП Browser plug-in» '
+        + 'и перезапустите браузер.',
+      );
+    }
+    throw e;
+  }
 }
 
 /** Загружает API плагина (один раз). */
@@ -154,7 +199,7 @@ function extractSnils(subject: string): string {
 /** Читает сертификаты из хранилища «Личные» текущего пользователя. */
 export async function listCertificates(): Promise<CertificateInfo[]> {
   const api = await loadCryptoPro();
-  const store = await api.CreateObjectAsync('CAdESCOM.Store');
+  const store = await createObject(api, 'CAdESCOM.Store');
   try {
     await store.Open(
       api.CAPICOM_CURRENT_USER_STORE,
@@ -200,7 +245,7 @@ export async function signDetached(
   thumbprint: string,
 ): Promise<string> {
   const api = await loadCryptoPro();
-  const store = await api.CreateObjectAsync('CAdESCOM.Store');
+  const store = await createObject(api, 'CAdESCOM.Store');
   let certificate: any;
   try {
     await store.Open(
@@ -221,7 +266,7 @@ export async function signDetached(
     await store.Close();
   }
 
-  const data = await api.CreateObjectAsync('CAdESCOM.CadesSignedData');
+  const data = await createObject(api, 'CAdESCOM.CadesSignedData');
   await data.propset_ContentEncoding(api.CADESCOM_BASE64_TO_BINARY);
   await data.propset_Content(base64Content);
   return data.SignCades(certificate, api.CADESCOM_CADES_BES, true);
@@ -233,4 +278,42 @@ export function toBase64(text: string): string {
   let binary = '';
   bytes.forEach((b) => { binary += String.fromCharCode(b); });
   return btoa(binary);
+}
+
+/** Диагностика плагина для экрана входа: что именно не работает. */
+export interface PluginDiagnostics {
+  scriptLoaded: boolean;
+  apiPresent: boolean;
+  responds: boolean;
+  version?: string;
+  error?: string;
+}
+
+export async function diagnosePlugin(): Promise<PluginDiagnostics> {
+  const scriptLoaded = Boolean(window.cadesplugin);
+  const api = resolveApi();
+  const result: PluginDiagnostics = {
+    scriptLoaded,
+    apiPresent: Boolean(api),
+    responds: false,
+  };
+  if (!api) {
+    result.error = scriptLoaded
+      ? 'Скрипт плагина загружен, но API не инициализировался'
+      : 'Скрипт плагина не загружен';
+    return result;
+  }
+  try {
+    const about = await api.CreateObjectAsync('CAdESCOM.About');
+    result.responds = true;
+    try {
+      const version = await about.Version;
+      result.version = String(version ?? '');
+    } catch {
+      // версия недоступна — не критично
+    }
+  } catch (e) {
+    result.error = e instanceof Error ? e.message : String(e);
+  }
+  return result;
 }

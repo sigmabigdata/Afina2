@@ -69,6 +69,7 @@ public class AdminClientApi {
     private final CrlOnDemandService crlOnDemandService;
     private final DocumentNotifyService documentNotifyService;
     private final GosklyuchService gosklyuchService;
+    private final ru.afina.service.EmailService emailService;
     private final ru.afina.security.PiiEncryptor pii;
 
     /** Полная проверка .sig (цепочка+CRL); в демо/тестах выключается. */
@@ -86,6 +87,7 @@ public class AdminClientApi {
                           CrlOnDemandService crlOnDemandService,
                           DocumentNotifyService documentNotifyService,
                           GosklyuchService gosklyuchService,
+                          ru.afina.service.EmailService emailService,
                           ru.afina.security.PiiEncryptor pii) {
         this.userService = userService;
         this.userRepository = userRepository;
@@ -102,6 +104,7 @@ public class AdminClientApi {
         this.crlOnDemandService = crlOnDemandService;
         this.documentNotifyService = documentNotifyService;
         this.gosklyuchService = gosklyuchService;
+        this.emailService = emailService;
         this.pii = pii;
     }
 
@@ -248,6 +251,11 @@ public class AdminClientApi {
         if (link == null) {
             throw new IllegalStateException("Не удалось создать ссылку для входа");
         }
+        // Ссылка не только создаётся, но и отправляется на почту клиента
+        emailService.sendLoginLink(client.getEmail(), link, client.getFullName());
+        audit.event("LOGIN_LINK_SENT", "SUCCESS", admin.getEmail(), "USER",
+                String.valueOf(id), PiiMask.email(client.getEmail()),
+                "Ссылка для входа отправлена администратором");
         return Map.of("sent", true, "email", PiiMask.email(client.getEmail()));
     }
 

@@ -68,6 +68,7 @@ public class AuthApi {
     private final CurrentUser currentUser;
     private final ApiMapper mapper;
     private final DocumentRepository documentRepository;
+    private final ru.afina.service.CrlOnDemandService crlOnDemandService;
 
     @Value("${app.base-url}")
     private String baseUrl;
@@ -94,7 +95,8 @@ public class AuthApi {
                    ConsentService consentService, SettingsService settings,
                    SignatureVerifier signatureVerifier, AdminCredentialsFileService adminFile,
                    SecurityContextRepository contextRepository, CurrentUser currentUser,
-                   ApiMapper mapper, DocumentRepository documentRepository) {
+                   ApiMapper mapper, DocumentRepository documentRepository,
+                   ru.afina.service.CrlOnDemandService crlOnDemandService) {
         this.userService = userService;
         this.emailService = emailService;
         this.audit = audit;
@@ -106,6 +108,7 @@ public class AuthApi {
         this.currentUser = currentUser;
         this.mapper = mapper;
         this.documentRepository = documentRepository;
+        this.crlOnDemandService = crlOnDemandService;
     }
 
     // ═══════════════════════════════════════════════════════
@@ -246,6 +249,19 @@ public class AuthApi {
             }
 
             byte[] challengeBytes = req.getChallenge().getBytes(StandardCharsets.UTF_8);
+
+            // В строгом режиме для проверки цепочки нужны CRL издателя:
+            // подтягиваем их по CDP сертификата из подписи (best-effort).
+            if (certLoginRequireChain) {
+                try {
+                    crlOnDemandService.ensureForSignature(
+                            req.getSignatureBase64(), null, "cert-login");
+                } catch (Exception e) {
+                    log.warn("Не удалось загрузить CRL для входа по сертификату: {}",
+                            e.getMessage());
+                }
+            }
+
             // Строгий режим: подпись + цепочка + truststore + CRL
             Map<String, Object> result = certLoginRequireChain
                     ? signatureVerifier.verifyDetached(challengeBytes, req.getSignatureBase64())
