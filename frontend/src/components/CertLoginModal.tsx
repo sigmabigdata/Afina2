@@ -46,6 +46,7 @@ export default function CertLoginModal({
   const [error, setError] = useState<string>();
   const [diag, setDiag] = useState<PluginDiagnostics | null>(null);
   const [diagBusy, setDiagBusy] = useState(false);
+  const [waited, setWaited] = useState(0);
 
   const init = useCallback(async () => {
     setPhase('loading');
@@ -80,6 +81,16 @@ export default function CertLoginModal({
   useEffect(() => {
     if (open) void init();
   }, [open, init]);
+
+  // Счётчик ожидания: пользователь видит, что поиск идёт, а не «зависло»
+  useEffect(() => {
+    if (!open || phase !== 'loading') {
+      setWaited(0);
+      return undefined;
+    }
+    const timer = setInterval(() => setWaited((v: number) => v + 1), 1000);
+    return () => clearInterval(timer);
+  }, [open, phase]);
 
   const handleLogin = async () => {
     const cert = certs.find((c) => c.thumbprint === selected);
@@ -119,8 +130,15 @@ export default function CertLoginModal({
     <Modal open={open} onCancel={onClose} footer={null} width={560}
       title="Вход по сертификату" destroyOnHidden>
       {phase === 'loading' && (
-        <Alert type="info" showIcon message="Поиск сертификатов…"
-          description="Обращаемся к плагину КриптоПро на рабочем месте." />
+        <Alert
+          type="info"
+          showIcon
+          message={`Поиск сертификатов КриптоПро…${waited > 0 ? ` (${waited} с)` : ''}`}
+          description={waited >= 4
+            ? 'Плагин долго не отвечает. Проверьте, что установлено расширение '
+              + '«КриптоПро ЭЦП Browser plug-in» и подключён носитель с ключом.'
+            : 'Обращаемся к плагину КриптоПро и читаем хранилище «Личные».'}
+        />
       )}
 
       {phase === 'ready' && (
@@ -199,6 +217,10 @@ export default function CertLoginModal({
                   <div>Скрипт API: {diag.scriptLoaded ? 'загружен' : 'не загружен'}</div>
                   <div>Объект API: {diag.apiPresent ? 'есть' : 'нет'}</div>
                   <div>Ответ плагина: {diag.responds ? 'да' : 'нет'}</div>
+                  <div>Хранилище «Личные»: {diag.storeOpened
+                    ? 'открыто'
+                    : (diag.storeOpened === false ? 'не открылось' : '—')}</div>
+                  <div>Сертификатов в хранилище: {diag.certificatesCount ?? '—'}</div>
                   {diag.error && <div>Ошибка: {diag.error}</div>}
                   <div style={{ marginTop: 6 }}>
                     <a href="https://www.cryptopro.ru/products/cades/plugin"

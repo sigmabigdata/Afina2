@@ -46,7 +46,7 @@ export interface CryptoApi {
   [key: string]: any;
 }
 
-const API_TIMEOUT_MS = 25_000;
+const API_TIMEOUT_MS = 12_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -197,45 +197,95 @@ function extractSnils(subject: string): string {
 }
 
 /** Читает сертификаты из хранилища «Личные» текущего пользователя. */
+/** Стандартные значения констант CAPICOM/CADESCOM.
+ *  Берём из плагина, а если их там нет — используем известные значения. */
+function constants(api: CryptoApi) {
+  // Константы живут на глобальном объекте плагина; если resolveApi вернул
+  // внутренний объект — берём их всё равно из window.cadesplugin.
+  const global: any = window.cadesplugin ?? {};
+  const pick = (name: string, fallback: number) =>
+    api[name] ?? global[name] ?? fallback;
+  return {
+    currentUserStore: pick('CAPICOM_CURRENT_USER_STORE', 2),
+    openMaxAllowed: pick('CAPICOM_STORE_OPEN_MAXIMUM_ALLOWED', 2),
+    findSha1: pick('CAPICOM_CERTIFICATE_FIND_SHA1_HASH', 0),
+    cadesBes: pick('CADESCOM_CADES_BES', 1),
+    base64ToBinary: pick('CADESCOM_BASE64_TO_BINARY', 1),
+  };
+}
+
+/** Открывает хранилище «Личные» с несколькими попытками (плагин иногда
+ *  «просыпается» не мгновенно после рукопожатия). */
+async function openStore(api: CryptoApi): Promise<any> {
+  const c = constants(api);
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    try {
+      const store = await createObject(api, 'CAdESCOM.Store');
+      await store.Open(c.currentUserStore, 'My', c.openMaxAllowed);
+      return store;
+    } catch (e) {
+      lastError = e;
+      await sleep(400 * attempt);
+    }
+  }
+  const message = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new CryptoProError(
+    `Не удалось открыть хранилище сертификатов «Личные»: ${message}. `
+    + 'Проверьте, что КриптоПро CSP запущен и контейнер с ключом подключён.',
+  );
+}
+
+/** Читает сертификаты из хранилища «Личные» текущего пользователя. */
 export async function listCertificates(): Promise<CertificateInfo[]> {
   const api = await loadCryptoPro();
-  const store = await createObject(api, 'CAdESCOM.Store');
+  const store = await openStore(api);
   try {
-    await store.Open(
-      api.CAPICOM_CURRENT_USER_STORE,
-      'My',
-      api.CAPICOM_STORE_OPEN_MAXIMUM_ALLOWED,
-    );
     const certificates = await store.Certificates;
     const count: number = await certificates.Count;
     const result: CertificateInfo[] = [];
     for (let i = 1; i <= count; i += 1) {
-      const cert = await certificates.Item(i);
-      const subject: string = await cert.SubjectName;
-      const issuer: string = await cert.IssuerName;
-      const thumbprint: string = await cert.Thumbprint;
-      const validFrom: Date = await cert.ValidFromDate;
-      const validTo: Date = await cert.ValidToDate;
-      let hasPrivateKey = true;
       try {
-        hasPrivateKey = await cert.HasPrivateKey();
-      } catch {
-        hasPrivateKey = true;
+        const cert = await certificates.Item(i);
+        const subject: string = await cert.SubjectName;
+        const issuer: string = await cert.IssuerName;
+        const thumbprint: string = await cert.Thumbprint;
+        let validFrom = '';
+        let validTo = '';
+        try {
+          validFrom = (await cert.ValidFromDate)?.toISOString?.() ?? '';
+          validTo = (await cert.ValidToDate)?.toISOString?.() ?? '';
+        } catch {
+          // даты есть не во всех версиях плагина
+        }
+        let hasPrivateKey = true;
+        try {
+          hasPrivateKey = await cert.HasPrivateKey();
+        } catch {
+          hasPrivateKey = true;
+        }
+        result.push({
+          thumbprint,
+          subject,
+          cn: extractCn(subject),
+          snils: extractSnils(subject),
+          issuer,
+          validFrom,
+          validTo,
+          hasPrivateKey,
+        });
+      } catch (e) {
+        // Один проблемный сертификат не должен ломать весь список
+        console.warn('CryptoPro: пропущен сертификат #' + i, e);
       }
-      result.push({
-        thumbprint,
-        subject,
-        cn: extractCn(subject),
-        snils: extractSnils(subject),
-        issuer,
-        validFrom: validFrom?.toISOString?.() ?? '',
-        validTo: validTo?.toISOString?.() ?? '',
-        hasPrivateKey,
-      });
     }
     return result;
   } finally {
-    await store.Close();
+    try {
+      await store.Close();
+    } catch {
+      // хранилище могло закрыться само
+    }
   }
 }
 
@@ -245,18 +295,13 @@ export async function signDetached(
   thumbprint: string,
 ): Promise<string> {
   const api = await loadCryptoPro();
+  const c = constants(api);
   const store = await createObject(api, 'CAdESCOM.Store');
   let certificate: any;
   try {
-    await store.Open(
-      api.CAPICOM_CURRENT_USER_STORE,
-      'My',
-      api.CAPICOM_STORE_OPEN_MAXIMUM_ALLOWED,
-    );
+    await store.Open(c.currentUserStore, 'My', c.openMaxAllowed);
     const certificates = await store.Certificates;
-    const found = await certificates.Find(
-      api.CAPICOM_CERTIFICATE_FIND_SHA1_HASH, thumbprint,
-    );
+    const found = await certificates.Find(c.findSha1, thumbprint);
     const count: number = await found.Count;
     if (count < 1) {
       throw new CryptoProError('Сертификат не найден в хранилище «Личные»');
@@ -267,9 +312,9 @@ export async function signDetached(
   }
 
   const data = await createObject(api, 'CAdESCOM.CadesSignedData');
-  await data.propset_ContentEncoding(api.CADESCOM_BASE64_TO_BINARY);
+  await data.propset_ContentEncoding(c.base64ToBinary);
   await data.propset_Content(base64Content);
-  return data.SignCades(certificate, api.CADESCOM_CADES_BES, true);
+  return data.SignCades(certificate, c.cadesBes, true);
 }
 
 /** Base64 из UTF-8 строки. */
@@ -286,6 +331,8 @@ export interface PluginDiagnostics {
   apiPresent: boolean;
   responds: boolean;
   version?: string;
+  storeOpened?: boolean;
+  certificatesCount?: number;
   error?: string;
 }
 
@@ -303,16 +350,33 @@ export async function diagnosePlugin(): Promise<PluginDiagnostics> {
       : 'Скрипт плагина не загружен';
     return result;
   }
+
+  // 1) Плагин отвечает?
   try {
     const about = await api.CreateObjectAsync('CAdESCOM.About');
     result.responds = true;
     try {
-      const version = await about.Version;
-      result.version = String(version ?? '');
+      result.version = String(await about.Version ?? '');
     } catch {
-      // версия недоступна — не критично
+      // версия не критична
     }
   } catch (e) {
+    result.error = e instanceof Error ? e.message : String(e);
+    return result;
+  }
+
+  // 2) Открывается ли хранилище и видны ли сертификаты?
+  try {
+    const store = await openStore(api);
+    try {
+      const certificates = await store.Certificates;
+      result.certificatesCount = Number(await certificates.Count) || 0;
+      result.storeOpened = true;
+    } finally {
+      try { await store.Close(); } catch { /* уже закрыто */ }
+    }
+  } catch (e) {
+    result.storeOpened = false;
     result.error = e instanceof Error ? e.message : String(e);
   }
   return result;
