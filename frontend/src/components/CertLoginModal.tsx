@@ -9,7 +9,7 @@ import {
 import { useApp } from '../lib/store';
 import { sendClientLog } from '../lib/clientlog';
 
-type Phase = 'idle' | 'loading' | 'ready' | 'signing' | 'error';
+type Phase = 'loading' | 'ready' | 'signing' | 'error';
 
 /**
  * Плагин КриптоПро работает только в настольных Chrome/Edge/Firefox/Yandex.
@@ -40,7 +40,7 @@ export default function CertLoginModal({
 }: { open: boolean; onClose: () => void }) {
   const { refreshMe } = useApp();
   const { message } = App.useApp();
-  const [phase, setPhase] = useState<Phase>('idle');
+  const [phase, setPhase] = useState<Phase>('loading');
   const [certs, setCerts] = useState<CertificateInfo[]>([]);
   const [selected, setSelected] = useState<string>();
   const [manualSnils, setManualSnils] = useState('');
@@ -87,15 +87,15 @@ export default function CertLoginModal({
 
   useEffect(() => {
     if (!open) return;
-    // Не ищем сертификаты автоматически: плагин КриптоПро создаёт объекты
-    // только в ответ на действие пользователя. Показываем кнопку.
-    setPhase('idle');
+    // Как в AfinaZ: поиск сразу при открытии окна (библиотека плагина
+    // сама дожидается готовности расширения)
     setError(undefined);
     setCerts([]);
     setSelected(undefined);
     setWaited(0);
     setAttempt(0);
-  }, [open]);
+    void init();
+  }, [open, init]);
 
   // Счётчик ожидания: пользователь видит, что поиск идёт, а не «зависло»
   useEffect(() => {
@@ -144,22 +144,6 @@ export default function CertLoginModal({
   return (
     <Modal open={open} onCancel={onClose} footer={null} width={560}
       title="Вход по сертификату" destroyOnHidden>
-      {phase === 'idle' && (
-        <Space direction="vertical" size={14} style={{ width: '100%' }}>
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-            Нажмите кнопку — плагин прочитает сертификаты с закрытым ключом
-            из хранилища «Личные» на этом компьютере.
-          </Typography.Paragraph>
-          <Button type="primary" size="large" block icon={<SafetyCertificateOutlined />}
-            onClick={() => { void init(); }}>
-            Найти сертификаты
-          </Button>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            Ключ не покидает рабочее место: подпись формирует плагин КриптоПро.
-          </Typography.Text>
-        </Space>
-      )}
-
       {phase === 'loading' && (
         <Alert
           type="info"

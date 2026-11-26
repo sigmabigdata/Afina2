@@ -1,22 +1,18 @@
 /**
- * Работа с браузерным плагином КриптоПро ЭЦП Browser plug-in.
+ * Работа с плагином КриптоПро ЭЦП Browser plug-in.
+ *
+ * Реализация портирована из AfinaZ: используется та же вендорная библиотека
+ * (`vendor/crypto-pro-cadesplugin.js`), которая сама дожидается готовности
+ * расширения и умеет читать сертификаты и подписывать. Это устраняет
+ * «плавающие» ошибки инициализации, из-за которых первые вызовы плагина
+ * падали с `Cannot read properties of undefined`.
  *
  * Плагин выполняет криптографию на рабочем месте: закрытый ключ не покидает
  * контейнер (Рутокен/реестр/Токен). Сервер получает только отсоединённую
  * подпись CAdES-BES и проверяет её библиотекой JCSP (ГОСТ 34.10-2012).
- *
- * Поддерживаются только настольные браузеры (Chrome/Edge/Firefox/Yandex)
- * с установленным плагином и КриптоПро CSP.
  */
-
-const PLUGIN_URL = 'https://www.cryptopro.ru/sites/default/files/products/cades/cadesplugin_api.js';
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-declare global {
-  interface Window {
-    cadesplugin?: any;
-  }
-}
+import cadespluginOnload, { type VendorApi, type VendorCertificate }
+  from './vendor/crypto-pro-cadesplugin';
 
 export interface CertificateInfo {
   thumbprint: string;
@@ -36,191 +32,23 @@ export class CryptoProError extends Error {
   }
 }
 
-/**
- * API плагина. Методы появляются не сразу после загрузки скрипта,
- * поэтому объект ищется терпеливо (см. waitForApi).
- */
-export interface CryptoApi {
-  CreateObjectAsync: (name: string) => Promise<any>;
-  // Константы CAPICOM/CADESCOM
-  [key: string]: any;
-}
+let apiPromise: Promise<VendorApi> | null = null;
 
-const API_TIMEOUT_MS = 12_000;
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-let pluginPromise: Promise<CryptoApi> | null = null;
-
-/** Ищет объект с CreateObjectAsync среди вариантов, которые отдаёт плагин. */
-function resolveApi(): CryptoApi | null {
-  const global: any = window.cadesplugin;
-  if (!global) return null;
-  const candidates = [global, global.cadesplugin, global.plugin, global.CAdESCOM];
-  for (const candidate of candidates) {
-    if (candidate && typeof candidate.CreateObjectAsync === 'function') {
-      return candidate as CryptoApi;
-    }
-  }
-  return null;
-}
-
-/** Проверка работоспособности: реальный вызов к плагину. */
-async function probe(api: CryptoApi): Promise<boolean> {
-  // Старые версии плагина не знают CAdESCOM.About, поэтому пробуем два объекта
-  for (const name of ['CAdESCOM.About', 'CAdESCOM.Store']) {
-    try {
-      const object = await api.CreateObjectAsync(name);
-      if (object) return true;
-    } catch {
-      // пробуем следующий вариант
-    }
-  }
-  return false;
-}
-
-/**
- * Ждёт, пока плагин инициализируется и начнёт отвечать.
- *
- * Важно: `window.cadesplugin` появляется сразу после загрузки скрипта, но его
- * методы работают только после рукопожатия с расширением. Если расширения нет,
- * вызов падает с TypeError «Cannot read properties of undefined» — поэтому
- * готовность проверяется настоящим вызовом CreateObjectAsync.
- */
-async function waitForApi(timeoutMs = API_TIMEOUT_MS): Promise<CryptoApi> {
-  const started = Date.now();
-
-  // Некоторые версии API — thenable: даём шанс рукопожатию
-  const global: any = window.cadesplugin;
-  if (global && typeof global.then === 'function') {
-    await Promise.race([
-      Promise.resolve(global).catch(() => undefined),
-      sleep(Math.min(5000, timeoutMs)),
-    ]);
-  }
-
-  while (Date.now() - started < timeoutMs) {
-    const api = resolveApi();
-    if (api && await probe(api)) return api;
-    await sleep(200);
-  }
-
-  if (!global) {
-    throw new CryptoProError(
-      'Плагин КриптоПро не установлен. Установите «КриптоПро ЭЦП Browser plug-in» '
-      + 'с сайта cryptopro.ru, затем перезапустите браузер.',
-    );
-  }
-  throw new CryptoProError(
-    'Расширение КриптоПро не отвечает. Проверьте, что «КриптоПро ЭЦП Browser plug-in» '
-    + 'установлено и включено в браузере, а КриптоПро CSP запущен. '
-    + 'После установки расширения перезапустите браузер.',
-  );
-}
-
-/** Ошибка «плагин недоступен» в разных формулировках браузера. */
-function isPluginMissingError(e: unknown): boolean {
-  const message = e instanceof Error ? e.message : String(e);
-  return message.includes('CreateObjectAsync')
-      || message.includes('CreateObject')
-      || message.includes('cadesplugin');
-}
-
-/** Обёртка вызова плагина с понятной ошибкой вместо TypeError. */
-export async function createObject(api: CryptoApi, name: string): Promise<any> {
-  try {
-    return await api.CreateObjectAsync(name);
-  } catch (e) {
-    if (isPluginMissingError(e)) {
+/** Загружает API плагина (один раз, с ожиданием готовности расширения). */
+export function loadCryptoPro(): Promise<VendorApi> {
+  if (!apiPromise) {
+    apiPromise = cadespluginOnload().catch((e: unknown) => {
+      apiPromise = null;
+      const message = e instanceof Error ? e.message : String(e);
       throw new CryptoProError(
-        'Расширение КриптоПро не отвечает. Установите «КриптоПро ЭЦП Browser plug-in» '
-        + 'и перезапустите браузер.',
+        /cadesplugin|undefined|Cannot read/i.test(message)
+          ? 'Плагин КриптоПро не отвечает. Установите «КриптоПро ЭЦП Browser plug-in» '
+            + 'и КриптоПро CSP, затем перезапустите браузер.'
+          : `Плагин КриптоПро: ${message}`,
       );
-    }
-    throw e;
-  }
-}
-
-/** Загружает API плагина (один раз). */
-export function loadCryptoPro(): Promise<CryptoApi> {
-  if (pluginPromise) return pluginPromise;
-
-  pluginPromise = (async () => {
-    if (resolveApi()) return resolveApi() as CryptoApi;
-
-    if (!window.cadesplugin) {
-      await new Promise<void>((resolve, reject) => {
-        const script = document.createElement('script');
-        script.src = PLUGIN_URL;
-        script.async = true;
-        const timer = setTimeout(() => resolve(), 12_000);
-        script.onload = () => { clearTimeout(timer); resolve(); };
-        script.onerror = () => {
-          clearTimeout(timer);
-          reject(new CryptoProError(
-            'Не удалось загрузить API плагина КриптоПро. '
-            + 'Проверьте доступ к www.cryptopro.ru из браузера.'));
-        };
-        document.head.appendChild(script);
-      });
-    }
-
-    return waitForApi();
-  })().catch((e) => {
-    // даём шанс повторной попытки при следующем открытии окна
-    pluginPromise = null;
-    throw e;
-  });
-
-  return pluginPromise;
-}
-
-/**
- * Возвращает рабочий объект API.
- *
- * Дублирующая проверка нужна из-за кеша промиса: если рукопожатие с плагином
- * произошло позже, кэшированный объект мог оказаться неполным.
- */
-async function requireApi(): Promise<CryptoApi> {
-  const direct = resolveApi();
-  if (direct) return direct;
-  try {
-    return await loadCryptoPro();
-  } catch (e) {
-    const retry = resolveApi();
-    if (retry) return retry;
-    throw e;
-  }
-}
-
-/**
- * Загружает скрипт API, если его ещё нет, и ждёт появления объекта.
- *
- * В отличие от {@link loadCryptoPro} НЕ вызывает рукопожатие `cadesplugin.then`:
- * именно после него первый вызов CAdESCOM.Store может падать. Этот путь
- * повторяет последовательность, которая стабильно работает в диагностике.
- */
-export async function ensurePluginScript(timeoutMs = 10_000): Promise<void> {
-  if (!window.cadesplugin) {
-    await new Promise<void>((resolve) => {
-      const script = document.createElement('script');
-      script.src = PLUGIN_URL;
-      script.async = true;
-      const timer = setTimeout(() => resolve(), 8000);
-      script.onload = () => { clearTimeout(timer); resolve(); };
-      script.onerror = () => { clearTimeout(timer); resolve(); };
-      document.head.appendChild(script);
     });
   }
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    if (window.cadesplugin) return;
-    await sleep(120);
-  }
-  throw new CryptoProError(
-    'Плагин КриптоПро не установлен. Установите «КриптоПро ЭЦП Browser plug-in» '
-    + 'с сайта cryptopro.ru, затем перезапустите браузер.',
-  );
+  return apiPromise;
 }
 
 /** Плагин доступен в этом браузере? */
@@ -233,152 +61,103 @@ export async function isCryptoProAvailable(): Promise<boolean> {
   }
 }
 
-function extractCn(subject: string): string {
-  const match = /CN=([^,]+)/i.exec(subject);
-  return match ? match[1].replace(/"/g, '').trim() : subject;
+/** Обратная совместимость: библиотека сама загружает скрипт при импорте. */
+export async function ensurePluginScript(): Promise<void> {
+  await loadCryptoPro();
 }
 
-function extractSnils(subject: string): string {
-  const match = /(?:СНИЛС|SNILS)\s*=\s*([0-9\-\s]{11,20})/i.exec(subject);
-  if (!match) return '';
-  return match[1].replace(/\D/g, '');
+// ═══════════════════════ Разбор subject ═══════════════════════
+
+/** Значение атрибута X.500 по ключу (CN, O, СНИЛС…). */
+function extractValue(key: string, input: string): string | null {
+  if (!input) return null;
+  const safeKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = input.match(new RegExp(`${safeKey}=([^,]+)`, 'i'));
+  return match && match[1] ? match[1].trim().replace(/^"|"$/g, '') : null;
+}
+
+/** Разбирает hex-строку ASN.1 OCTET STRING со СНИЛС: 12 0b <11 ASCII-цифр>. */
+function parseHexSnils(hex: string): string {
+  if (!hex) return '';
+  const start = hex.substring(0, 2).toLowerCase() === '12' ? 4 : 0;
+  let result = '';
+  for (let i = start; i < hex.length; i += 2) {
+    const code = parseInt(hex.substring(i, i + 2), 16);
+    if (code >= 48 && code <= 57) result += String.fromCharCode(code);
+  }
+  return result.replace(/\D/g, '');
 }
 
 /**
- * Читает сертификаты с автоматическими повторами: сразу после открытия
- * страницы плагин может ещё не принимать вызовы CreateObjectAsync.
+ * Извлекает СНИЛС из subject во всех известных формах:
+ * «СНИЛС=…», «SNILS=…» и OID 1.2.643.100.3 в hex-виде.
  */
-export async function listCertificatesWithRetry(
-  attempts = 3,
-  onAttempt?: (attempt: number) => void,
-): Promise<CertificateInfo[]> {
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      onAttempt?.(attempt);
-      return await listCertificates();
-    } catch (e) {
-      lastError = e;
-      // повторяем рукопожатие и ждём
-      try {
-        const global: any = window.cadesplugin;
-        if (global && typeof global.then === 'function') {
-          await Promise.race([
-            new Promise<void>((resolve) => {
-              try { global.then(() => resolve(), () => resolve()); } catch { resolve(); }
-            }),
-            sleep(2000),
-          ]);
-        }
-      } catch {
-        // игнорируем
-      }
-      await sleep(1200 * attempt);
-    }
-  }
-  throw lastError instanceof Error
-    ? lastError
-    : new CryptoProError('Не удалось прочитать список сертификатов');
+export function extractSnils(subject: string | null | undefined): string {
+  if (!subject) return '';
+  const direct = extractValue('СНИЛС', subject) ?? extractValue('SNILS', subject);
+  if (direct) return direct.replace(/\D/g, '');
+  const oid = subject.match(/OID\.1\.2\.643\.100\.3=#([0-9a-fA-F]+)/i)
+    ?? subject.match(/1\.2\.643\.100\.3=#([0-9a-fA-F]+)/i);
+  return oid ? parseHexSnils(oid[1]) : '';
 }
 
-/** Читает сертификаты из хранилища «Личные» текущего пользователя. */
-/** Стандартные значения констант CAPICOM/CADESCOM.
- *  Берём из плагина, а если их там нет — используем известные значения. */
-function constants(api?: CryptoApi | null) {
-  // Константы живут на глобальном объекте плагина; если resolveApi вернул
-  // внутренний объект — берём их всё равно из window.cadesplugin.
-  // Ни при каких условиях не обращаемся к свойствам undefined.
-  const global: any = (typeof window !== 'undefined' && window.cadesplugin) || {};
-  const source: any = api ?? global;
-  const pick = (name: string, fallback: number) =>
-    source?.[name] ?? global[name] ?? fallback;
+export function extractCn(subject: string | null | undefined): string {
+  if (!subject) return '';
+  const cn = extractValue('CN', subject);
+  return cn ? cn.replace(/^"|"$/g, '').trim() : subject.trim();
+}
+
+function toIso(value: unknown): string {
+  if (!value) return '';
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? '' : value.toISOString();
+  if (typeof value === 'object' && value !== null) {
+    const from = (value as { from?: Date | string }).from;
+    if (from instanceof Date) return from.toISOString();
+    if (typeof from === 'string') return from;
+  }
+  const date = new Date(String(value));
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+}
+
+function mapCertificate(cert: VendorCertificate): CertificateInfo {
+  const subject = cert.subjectInfo ?? '';
+  const period = cert.validPeriod;
+  const from = period instanceof Date ? period : (period as { from?: Date })?.from;
+  const to = period instanceof Date ? period : (period as { to?: Date })?.to;
   return {
-    currentUserStore: pick('CAPICOM_CURRENT_USER_STORE', 2),
-    openMaxAllowed: pick('CAPICOM_STORE_OPEN_MAXIMUM_ALLOWED', 2),
-    findSha1: pick('CAPICOM_CERTIFICATE_FIND_SHA1_HASH', 0),
-    cadesBes: pick('CADESCOM_CADES_BES', 1),
-    base64ToBinary: pick('CADESCOM_BASE64_TO_BINARY', 1),
+    thumbprint: cert.thumbprint,
+    subject,
+    cn: extractCn(subject),
+    snils: extractSnils(subject),
+    issuer: cert.issuerInfo ?? '',
+    validFrom: toIso(from),
+    validTo: toIso(to),
+    hasPrivateKey: true,
   };
 }
 
-/** Открывает хранилище «Личные» с несколькими попытками (плагин иногда
- *  «просыпается» не мгновенно после рукопожатия). */
-async function openStore(api: CryptoApi): Promise<any> {
-  const c = constants(api);
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= 6; attempt += 1) {
-    try {
-      const store = await createObject(api, 'CAdESCOM.Store');
-      await store.Open(c.currentUserStore, 'My', c.openMaxAllowed);
-      return store;
-    } catch (e) {
-      lastError = e;
-      // Плагину нужно время на «прогрев» после рукопожатия
-      await sleep(600 + 300 * attempt);
-    }
+/** Сертификаты с закрытым ключом из хранилища «Личные». */
+export async function listCertificates(): Promise<CertificateInfo[]> {
+  const api = await loadCryptoPro();
+  try {
+    const certs = await api.getCertsList();
+    return (certs ?? []).map(mapCertificate);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    throw new CryptoProError(message);
   }
-  const message = lastError instanceof Error ? lastError.message : String(lastError);
-  throw new CryptoProError(
-    `Не удалось открыть хранилище сертификатов «Личные»: ${message}. `
-    + 'Проверьте, что КриптоПро CSP запущен и контейнер с ключом подключён.',
-  );
 }
 
 /**
- * Читает сертификаты с автоматическими повторами: сразу после открытия
- * страницы плагин может ещё не принимать вызовы CreateObjectAsync.
+ * Совместимость с прежним API: повторы не нужны — библиотека сама
+ * дожидается готовности плагина.
  */
-/** Читает сертификаты из хранилища «Личные» текущего пользователя. */
-export async function listCertificates(): Promise<CertificateInfo[]> {
-  const api = await requireApi();
-  const store = await openStore(api);
-  try {
-    const certificates = await store.Certificates;
-    const count: number = await certificates.Count;
-    const result: CertificateInfo[] = [];
-    for (let i = 1; i <= count; i += 1) {
-      try {
-        const cert = await certificates.Item(i);
-        const subject: string = await cert.SubjectName;
-        const issuer: string = await cert.IssuerName;
-        const thumbprint: string = await cert.Thumbprint;
-        let validFrom = '';
-        let validTo = '';
-        try {
-          validFrom = (await cert.ValidFromDate)?.toISOString?.() ?? '';
-          validTo = (await cert.ValidToDate)?.toISOString?.() ?? '';
-        } catch {
-          // даты есть не во всех версиях плагина
-        }
-        let hasPrivateKey = true;
-        try {
-          hasPrivateKey = await cert.HasPrivateKey();
-        } catch {
-          hasPrivateKey = true;
-        }
-        result.push({
-          thumbprint,
-          subject,
-          cn: extractCn(subject),
-          snils: extractSnils(subject),
-          issuer,
-          validFrom,
-          validTo,
-          hasPrivateKey,
-        });
-      } catch (e) {
-        // Один проблемный сертификат не должен ломать весь список
-        console.warn('CryptoPro: пропущен сертификат #' + i, e);
-      }
-    }
-    return result;
-  } finally {
-    try {
-      await store.Close();
-    } catch {
-      // хранилище могло закрыться само
-    }
-  }
+export async function listCertificatesWithRetry(
+  _attempts = 1,
+  onAttempt?: (attempt: number) => void,
+): Promise<CertificateInfo[]> {
+  onAttempt?.(1);
+  return listCertificates();
 }
 
 /** Подписывает данные (base64) отсоединённой подписью CAdES-BES. */
@@ -386,38 +165,24 @@ export async function signDetached(
   base64Content: string,
   thumbprint: string,
 ): Promise<string> {
-  const api = await requireApi();
-  const c = constants(api);
-  const store = await createObject(api, 'CAdESCOM.Store');
-  let certificate: any;
+  const api = await loadCryptoPro();
   try {
-    await store.Open(c.currentUserStore, 'My', c.openMaxAllowed);
-    const certificates = await store.Certificates;
-    const found = await certificates.Find(c.findSha1, thumbprint);
-    const count: number = await found.Count;
-    if (count < 1) {
-      throw new CryptoProError('Сертификат не найден в хранилище «Личные»');
-    }
-    certificate = await found.Item(1);
-  } finally {
-    await store.Close();
+    const signature = await api.signBase64(thumbprint, base64Content, true);
+    return sanitizeBase64(signature);
+  } catch (e) {
+    throw new CryptoProError(e instanceof Error ? e.message : String(e));
   }
-
-  const data = await createObject(api, 'CAdESCOM.CadesSignedData');
-  await data.propset_ContentEncoding(c.base64ToBinary);
-  await data.propset_Content(base64Content);
-  return data.SignCades(certificate, c.cadesBes, true);
 }
 
-/** Base64 из UTF-8 строки. */
-export function toBase64(text: string): string {
-  const bytes = new TextEncoder().encode(text);
-  let binary = '';
-  bytes.forEach((b) => { binary += String.fromCharCode(b); });
-  return btoa(binary);
+function sanitizeBase64(value: string): string {
+  return String(value ?? '')
+    .replace(/-----BEGIN[^-]*-----/g, '')
+    .replace(/-----END[^-]*-----/g, '')
+    .replace(/[^A-Za-z0-9+/=]/g, '');
 }
 
-/** Диагностика плагина для экрана входа: что именно не работает. */
+// ═══════════════════════ Диагностика ═══════════════════════
+
 export interface PluginDiagnostics {
   scriptLoaded: boolean;
   apiPresent: boolean;
@@ -429,47 +194,37 @@ export interface PluginDiagnostics {
 }
 
 export async function diagnosePlugin(): Promise<PluginDiagnostics> {
-  const scriptLoaded = Boolean(window.cadesplugin);
-  const api = resolveApi();
-  const result: PluginDiagnostics = {
-    scriptLoaded,
-    apiPresent: Boolean(api),
-    responds: false,
-  };
-  if (!api) {
-    result.error = scriptLoaded
-      ? 'Скрипт плагина загружен, но API не инициализировался'
-      : 'Скрипт плагина не загружен';
-    return result;
-  }
-
-  // 1) Плагин отвечает?
+  const scriptLoaded = Boolean((window as { cadesplugin?: unknown }).cadesplugin);
+  const result: PluginDiagnostics = { scriptLoaded, apiPresent: false, responds: false };
   try {
-    const about = await api.CreateObjectAsync('CAdESCOM.About');
-    result.responds = true;
+    const api = await loadCryptoPro();
+    result.apiPresent = true;
     try {
-      result.version = String(await about.Version ?? '');
-    } catch {
-      // версия не критична
+      const about = await api.about() as { Version?: string; version?: string };
+      result.responds = true;
+      result.version = String(about?.Version ?? about?.version ?? '');
+    } catch (e) {
+      result.error = e instanceof Error ? e.message : String(e);
+      return result;
     }
-  } catch (e) {
-    result.error = e instanceof Error ? e.message : String(e);
-    return result;
-  }
-
-  // 2) Открывается ли хранилище и видны ли сертификаты?
-  try {
-    const store = await openStore(api);
     try {
-      const certificates = await store.Certificates;
-      result.certificatesCount = Number(await certificates.Count) || 0;
+      const certs = await api.getCertsList();
       result.storeOpened = true;
-    } finally {
-      try { await store.Close(); } catch { /* уже закрыто */ }
+      result.certificatesCount = certs?.length ?? 0;
+    } catch (e) {
+      result.storeOpened = false;
+      result.error = e instanceof Error ? e.message : String(e);
     }
   } catch (e) {
-    result.storeOpened = false;
     result.error = e instanceof Error ? e.message : String(e);
   }
   return result;
+}
+
+/** Base64 из UTF-8 строки. */
+export function toBase64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let binary = '';
+  bytes.forEach((b) => { binary += String.fromCharCode(b); });
+  return btoa(binary);
 }
