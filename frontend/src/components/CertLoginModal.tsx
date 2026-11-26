@@ -3,10 +3,11 @@ import { Alert, App, Button, Input, Modal, Select, Space, Tag, Typography } from
 import { CloseCircleFilled, SafetyCertificateOutlined } from '@ant-design/icons';
 import { api } from '../lib/api';
 import {
-  CryptoProError, diagnosePlugin, isCryptoProAvailable, listCertificatesWithRetry,
+  CryptoProError, diagnosePlugin, ensurePluginScript, listCertificatesWithRetry,
   signDetached, toBase64, type CertificateInfo, type PluginDiagnostics,
 } from '../lib/cryptopro';
 import { useApp } from '../lib/store';
+import { sendClientLog } from '../lib/clientlog';
 
 type Phase = 'idle' | 'loading' | 'ready' | 'signing' | 'error';
 
@@ -59,13 +60,9 @@ export default function CertLoginModal({
       return;
     }
     try {
-      const available = await isCryptoProAvailable();
-      if (!available) {
-        throw new CryptoProError(
-          'Плагин КриптоПро ЭЦП не найден. Установите «КриптоПро ЭЦП Browser plug-in» '
-          + 'и КриптоПро CSP.',
-        );
-      }
+      // Только загрузка скрипта: без рукопожатия .then — иначе первый
+      // вызов CAdESCOM.Store падает (проверено на плагине 2.0.15003)
+      await ensurePluginScript();
       const list = (await listCertificatesWithRetry(3, (attempt) => {
         setAttempt(attempt);
       })).filter((c) => c.hasPrivateKey);
@@ -76,8 +73,15 @@ export default function CertLoginModal({
       setSelected(list[0].thumbprint);
       setPhase('ready');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Ошибка плагина КриптоПро');
+      const text = e instanceof Error ? e.message : 'Ошибка плагина КриптоПро';
+      setError(text);
       setPhase('error');
+      void (async () => {
+        // отправляем на сервер точный текст ошибки и состояние плагина
+        let diag = null;
+        try { diag = await diagnosePlugin(); } catch { /* ignore */ }
+        void sendClientLog('cert-login-error', text, diag);
+      })();
     }
   }, []);
 
@@ -267,7 +271,9 @@ export default function CertLoginModal({
             <Button loading={diagBusy} onClick={async () => {
               setDiagBusy(true);
               try {
-                setDiag(await diagnosePlugin());
+                const result = await diagnosePlugin();
+                setDiag(result);
+                void sendClientLog('cert-login-diagnostics', result.responds ? 'ok' : 'fail', result);
               } finally {
                 setDiagBusy(false);
               }
@@ -276,6 +282,11 @@ export default function CertLoginModal({
             </Button>
             <Button type="primary" onClick={onClose}>Закрыть</Button>
           </Space>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            Диагностика автоматически отправлена администратору системы.
+            Войти без плагина можно по ссылке из письма — закройте окно и
+            укажите рабочую почту на форме входа.
+          </Typography.Text>
         </Space>
       )}
     </Modal>

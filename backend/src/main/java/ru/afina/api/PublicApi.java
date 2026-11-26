@@ -155,6 +155,27 @@ public class PublicApi {
         return m;
     }
 
+    /**
+     * Приём диагностики с рабочего места (публично).
+     *
+     * Нужен для разбора проблем с плагином КриптоПро: браузер присылает
+     * версию сборки, браузер, точный текст ошибки и результат проверки плагина.
+     * Персональные данные не передаются; размер полей ограничен.
+     */
+    @PostMapping("/client-log")
+    public ResponseEntity<Map<String, Object>> clientLog(
+            @RequestBody(required = false) Map<String, Object> body) {
+        Map<String, Object> safe = new LinkedHashMap<>();
+        if (body != null) {
+            body.forEach((k, v) -> {
+                String value = String.valueOf(v);
+                safe.put(k, value.length() > 500 ? value.substring(0, 500) + "…" : value);
+            });
+        }
+        log.warn("КЛИЕНТ-ДИАГНОСТИКА: {}", safe);
+        return ResponseEntity.ok(Map.of("accepted", true));
+    }
+
     static String extractCn(String subject) {
         if (subject == null) return "—";
         java.util.regex.Matcher m = java.util.regex.Pattern

@@ -178,16 +178,18 @@ public class AuthApi {
                 audit.loginFail("token:" + (token != null && token.length() > 8
                         ? token.substring(0, 8) + "..." : "?"),
                         "Недействительный/истёкший токен");
-                response.sendRedirect(baseUrl + "/login?error=token");
+                // Относительный путь: cookie сессии останется на том же хосте,
+                // даже если ссылка пришла на другой домен/IP
+                response.sendRedirect("/login?error=token");
                 return;
             }
             establishSession(user, request, response);
             audit.loginSuccess(user.getEmail(), user.getRole().name());
-            response.sendRedirect(baseUrl + "/dashboard");
+            response.sendRedirect("/dashboard");
         } catch (Exception e) {
             log.error("confirmLogin failed", e);
             audit.loginFail("token", "Внутренняя ошибка при входе: " + e.getMessage());
-            response.sendRedirect(baseUrl + "/login?error=internal");
+            response.sendRedirect("/login?error=internal");
         }
     }
 

@@ -229,6 +229,8 @@ public class SecurityConfig {
                             "/api/v1/auth/cert-login",
                             "/api/v1/auth/admin/challenge",
                             "/api/v1/auth/admin/cert-login",
+                            // публичный приём диагностики плагина (только запись в лог)
+                            "/api/v1/public/client-log",
                             "/actuator/**"))
             .addFilterBefore(adminIpFilter(), UsernamePasswordAuthenticationFilter.class)
             .authorizeHttpRequests(a -> a

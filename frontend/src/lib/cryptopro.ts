@@ -193,6 +193,36 @@ async function requireApi(): Promise<CryptoApi> {
   }
 }
 
+/**
+ * Загружает скрипт API, если его ещё нет, и ждёт появления объекта.
+ *
+ * В отличие от {@link loadCryptoPro} НЕ вызывает рукопожатие `cadesplugin.then`:
+ * именно после него первый вызов CAdESCOM.Store может падать. Этот путь
+ * повторяет последовательность, которая стабильно работает в диагностике.
+ */
+export async function ensurePluginScript(timeoutMs = 10_000): Promise<void> {
+  if (!window.cadesplugin) {
+    await new Promise<void>((resolve) => {
+      const script = document.createElement('script');
+      script.src = PLUGIN_URL;
+      script.async = true;
+      const timer = setTimeout(() => resolve(), 8000);
+      script.onload = () => { clearTimeout(timer); resolve(); };
+      script.onerror = () => { clearTimeout(timer); resolve(); };
+      document.head.appendChild(script);
+    });
+  }
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    if (window.cadesplugin) return;
+    await sleep(120);
+  }
+  throw new CryptoProError(
+    'Плагин КриптоПро не установлен. Установите «КриптоПро ЭЦП Browser plug-in» '
+    + 'с сайта cryptopro.ru, затем перезапустите браузер.',
+  );
+}
+
 /** Плагин доступен в этом браузере? */
 export async function isCryptoProAvailable(): Promise<boolean> {
   try {
