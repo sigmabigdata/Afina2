@@ -1,0 +1,41 @@
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: ${DB_NAME:-afina2}
+      POSTGRES_USER: ${DB_USER:-afina}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change_me}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-afina} -d ${DB_NAME:-afina2}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.backend
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-afina2}
+      DB_USER: ${DB_USER:-afina}
+      DB_PASSWORD: ${DB_PASSWORD:-change_me}
+      JPA_DDL: validate
+      FLYWAY_ENABLED: "true"
+      JCP_LICENSE: ${JCP_LICENSE:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
+    ports:
+      - "8088:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

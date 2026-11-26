@@ -1,0 +1,30 @@
+spring:
+  application:
+    name: afina2
+  datasource:
+    url: ${DB_URL:jdbc:h2:mem:afina2;MODE=PostgreSQL;DB_CLOSE_DELAY=-1}
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL:create-drop}
+    open-in-view: false
+  flyway:
+    enabled: ${FLYWAY_ENABLED:false}
+
+server:
+  port: ${SERVER_PORT:8080}
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+app:
+  cors-origins: ${APP_CORS_ORIGINS:http://localhost:5173}
