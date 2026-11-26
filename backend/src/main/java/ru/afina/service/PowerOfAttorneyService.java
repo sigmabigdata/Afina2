@@ -90,7 +90,7 @@ public class PowerOfAttorneyService {
     @Transactional
     public void setActive(Long id, boolean active, String actorEmail) {
         PowerOfAttorney poa = repo.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Доверенность не найдена"));
+                .orElseThrow(() -> new ru.afina.error.NotFoundException("Доверенность не найдена"));
         poa.setActive(active);
         repo.save(poa);
         audit.poaToggle(actorEmail, id, active);
@@ -99,7 +99,7 @@ public class PowerOfAttorneyService {
     @Transactional
     public void delete(Long id, String actorEmail) {
         PowerOfAttorney poa = repo.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Доверенность не найдена"));
+                .orElseThrow(() -> new ru.afina.error.NotFoundException("Доверенность не найдена"));
         repo.delete(poa);
         audit.poaDelete(actorEmail, id, poa.getDocNumber());
     }

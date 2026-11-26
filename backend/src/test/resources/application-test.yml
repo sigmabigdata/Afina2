@@ -18,12 +18,16 @@ app:
   base-url: http://localhost:5173
   storage-path: /tmp/afina2-test-storage
   backup-path: /tmp/afina2-test-backups
+  backups-path: /tmp/afina2-test-backups
+  backups-pass-file: /tmp/afina2-test-backups/backup.pass
   logs-path: /tmp/afina2-test-logs
   crl-path: /tmp/afina2-test-crls
   certificates-path: /tmp/afina2-test-certs
   admins-file: /tmp/afina2-test-admins.env
   keys-path: /tmp/afina2-test-keys
   truststore-path: /tmp/afina2-test-certs/truststore.jks
+  angie-certs-path: /tmp/afina2-test-angie/certs
+  angie-conf-path: /tmp/afina2-test-angie/angie.conf
   admin-ip-whitelist: "*"
   cors-origins: http://localhost:5173
   mail:
@@ -32,7 +36,13 @@ app:
     from-name: Test
   notify:
     document-signed: false
+  signature:
+    attachment:
+      # В тестах используется самоподписанный сертификат — проверяем без цепочки
+      require-chain: false
   demo:
+    enabled: false
+  rate-limit:
     enabled: false
   gosklyuch:
     enabled: false

@@ -552,8 +552,11 @@ public class DocumentApi {
         }
         try {
             ensureCrls(sig, doc.getId(), signer.getEmail());
-            Map<String, Object> result = signatureVerifier.verifyDetached(
-                    documentService.getBytes(doc), sig);
+            byte[] content = documentService.getBytes(doc);
+            // Полная проверка (цепочка+CRL) или базовая — в зависимости от конфигурации
+            Map<String, Object> result = attachmentRequireChain
+                    ? signatureVerifier.verifyDetached(content, sig)
+                    : signatureVerifier.verifyDetachedBasic(content, sig);
             String subject = String.valueOf(result.getOrDefault("signerSubject", ""));
             String serial = String.valueOf(result.getOrDefault("signerSerial", ""));
             documentService.addSignature(doc.getId(), signer, sig, subject, serial);

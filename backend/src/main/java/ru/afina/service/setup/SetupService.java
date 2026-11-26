@@ -66,7 +66,6 @@ public class SetupService {
     private static final String E_MAIL_PASSWORD = "MAIL_PASSWORD";
     private static final String E_MAIL_FROM = "MAIL_FROM";
     private static final String E_MAIL_SSL = "MAIL_SSL";
-    private static final String FLAG_FALSE = "false";
 
     private static final String DRAFT_PREFIX = "setup.draft.";
 

@@ -76,7 +76,12 @@ public final class ClientIp {
             if (v.startsWith("[") && v.endsWith("]")) v = v.substring(1, v.length() - 1);
             return v.matches("[0-9a-fA-F:.]+") && v.contains(":");
         }
-        return v.matches("\\d{1,3}(\\.\\d{1,3}){3}");
+        if (!v.matches("\\d{1,3}(\\.\\d{1,3}){3}")) return false;
+        for (String octet : v.split("\\.")) {
+            int octetValue = Integer.parseInt(octet);
+            if (octetValue > 255) return false;
+        }
+        return true;
     }
 
     private static String trimHeader(String value) {

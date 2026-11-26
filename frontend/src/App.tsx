@@ -18,6 +18,9 @@ import CrlPage from './pages/admin/CrlPage';
 import SettingsPage from './pages/admin/SettingsPage';
 import MonitoringPage from './pages/admin/MonitoringPage';
 import AdminGosklyuchPage from './pages/admin/AdminGosklyuchPage';
+import AdminTemplatesPage from './pages/admin/AdminTemplatesPage';
+import AdminPoaPage from './pages/admin/AdminPoaPage';
+import AdminBackupsPage from './pages/admin/AdminBackupsPage';
 import NotFoundPage from './pages/NotFoundPage';
 import { useApp } from './lib/store';
 
@@ -69,6 +72,9 @@ export default function App() {
         <Route path="admin/settings" element={<AdminOnly><SettingsPage /></AdminOnly>} />
         <Route path="admin/monitoring" element={<AdminOnly><MonitoringPage /></AdminOnly>} />
         <Route path="admin/gosklyuch" element={<AdminOnly><AdminGosklyuchPage /></AdminOnly>} />
+        <Route path="admin/templates" element={<AdminOnly><AdminTemplatesPage /></AdminOnly>} />
+        <Route path="admin/poa" element={<AdminOnly><AdminPoaPage /></AdminOnly>} />
+        <Route path="admin/backups" element={<AdminOnly><AdminBackupsPage /></AdminOnly>} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

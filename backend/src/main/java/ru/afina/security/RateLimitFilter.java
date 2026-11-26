@@ -24,6 +24,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
 
+    /** В тестах лимит отключается (иначе тесты мешают друг другу). */
+    @org.springframework.beans.factory.annotation.Value("${app.rate-limit.enabled:true}")
+    private boolean enabled = true;
+
     private final RateLimitService rateLimit;
     private final ru.afina.service.SettingsService settings;
 
@@ -47,6 +51,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if (!ctx.isEmpty() && path.startsWith(ctx)) {
             path = path.substring(ctx.length());
         }
+        if (!enabled) {
+            chain.doFilter(req, resp);
+            return;
+        }
         String method = req.getMethod();
         String ip = clientIp(req);
 
@@ -63,28 +71,23 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private boolean isAllowed(String path, String method,
                               HttpServletRequest req, HttpServletResponse resp,
                               String ip) throws IOException {
-        // /login (POST) — лимит и окно берутся из настроек админки
-        if ("/login".equals(path) && "POST".equalsIgnoreCase(method)) {
-            String email = req.getParameter("email");
-            String emailKey = (email == null || email.isBlank())
-                    ? "anon"
-                    : email.toLowerCase().trim();
+        // Запрос ссылки для входа: 5 попыток / 15 мин на IP
+        if ("/api/v1/auth/login-link".equals(path) && "POST".equalsIgnoreCase(method)) {
             int limit = clamp(integerSetting("auth.rate_limit.login", DEFAULT_LOGIN_LIMIT), 1, 100);
             int windowMin = clamp(integerSetting("auth.rate_limit.window_min", DEFAULT_WINDOW_MIN),
                     1, 24 * 60);
-            return check(req, resp, "login:" + ip + ":" + emailKey, limit,
-                    Duration.ofMinutes(windowMin));
+            return check(req, resp, "login:" + ip, limit, Duration.ofMinutes(windowMin));
         }
-        // /admin/challenge — 10 / 15 мин на IP
-        if ("/admin/challenge".equals(path)) {
+        // Челлендж для входа по сертификату — 10 / 15 мин на IP
+        if ("/api/v1/auth/admin/challenge".equals(path)) {
             return check(req, resp, "challenge:" + ip, 10, Duration.ofMinutes(15));
         }
-        // /admin/cert-login — 5 / 15 мин на IP
-        if ("/admin/cert-login".equals(path) && "POST".equalsIgnoreCase(method)) {
+        // Вход по сертификату — 5 / 15 мин на IP
+        if ("/api/v1/auth/admin/cert-login".equals(path) && "POST".equalsIgnoreCase(method)) {
             return check(req, resp, "certlogin:" + ip, 5, Duration.ofMinutes(15));
         }
-        // /login/confirm — 20 / 15 мин на IP (защита от перебора токена)
-        if ("/login/confirm".equals(path)) {
+        // Переход по ссылке из письма — 20 / 15 мин на IP (защита от перебора токена)
+        if ("/api/v1/auth/confirm".equals(path)) {
             return check(req, resp, "confirm:" + ip, 20, Duration.ofMinutes(15));
         }
         return true;

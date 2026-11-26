@@ -120,7 +120,9 @@ public class CrlService {
         if (!target.startsWith(crlsDir)) {
             throw new SecurityException("Недопустимый путь");
         }
-        Files.deleteIfExists(target);
+        if (!Files.deleteIfExists(target)) {
+            throw new ru.afina.error.NotFoundException("Файл CRL не найден: " + fileName);
+        }
         log.info("CRL удалён: {}", fileName);
     }
 
@@ -153,12 +155,15 @@ public class CrlService {
     }
 
     /** Удалить несколько файлов по именам. */
+    /** Удаляет существующие файлы; отсутствующие пропускает. Возвращает число удалённых. */
     public int deleteMany(List<String> names) {
         int n = 0;
         for (String name : names) {
             try {
                 delete(name);
                 n++;
+            } catch (ru.afina.error.NotFoundException e) {
+                log.debug("CRL уже отсутствует: {}", name);
             } catch (Exception e) {
                 log.warn("Не удалось удалить {}: {}", name, e.getMessage());
             }

@@ -125,6 +125,13 @@ public class SecurityConfig {
                     chain.doFilter(req, res);
                     return;
                 }
+                // Фильтр относится только к административным маршрутам:
+                // health и публичные эндпоинты должны быть доступны мониторингу
+                String path = ((HttpServletRequest) req).getRequestURI();
+                if (!path.startsWith("/api/v1/admin")) {
+                    chain.doFilter(req, res);
+                    return;
+                }
                 String whitelistStr = currentWhitelist();
                 List<String> allowed = Arrays.stream(whitelistStr.split(","))
                         .map(String::trim).filter(s -> !s.isEmpty()).toList();
@@ -234,6 +241,7 @@ public class SecurityConfig {
                             "/api/v1/auth/dev-login",
                             "/api/v1/auth/confirm", "/api/v1/auth/cert-login",
                             "/api/v1/auth/admin/challenge", "/api/v1/auth/admin/cert-login",
+                            "/api/v1/auth/options",
                             "/api/v1/public/**",
                             "/api/v1/openapi/**", "/api/v1/swagger/**",
                             "/api/v1/swagger-ui/**", "/v3/api-docs/**")

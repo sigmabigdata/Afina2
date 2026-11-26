@@ -31,22 +31,19 @@ public class UserService implements UserDetailsService {
     private final ru.afina.repository.DocumentFolderRepository folderRepository;
     private final ru.afina.repository.DocumentRepository documentRepository;
     private final ru.afina.repository.DocumentSignatureRepository signatureRepository;
-    private final FolderService folderService;
 
     public UserService(UserRepository userRepository,
                        ru.afina.security.PiiEncryptor pii,
                        SettingsService settings,
                        ru.afina.repository.DocumentFolderRepository folderRepository,
                        ru.afina.repository.DocumentRepository documentRepository,
-                       ru.afina.repository.DocumentSignatureRepository signatureRepository,
-                       FolderService folderService) {
+                       ru.afina.repository.DocumentSignatureRepository signatureRepository) {
         this.userRepository = userRepository;
         this.pii = pii;
         this.settings = settings;
         this.folderRepository = folderRepository;
         this.documentRepository = documentRepository;
         this.signatureRepository = signatureRepository;
-        this.folderService = folderService;
     }
 
     // ============ Spring Security ============
@@ -260,6 +257,18 @@ public class UserService implements UserDetailsService {
             String name = ru.afina.util.PersonData.normalizeFullName(f.get("fullName"));
             if (name != null) u.setFullName(name);
         }
+        if (f.containsKey("phone")) {
+            String raw = blankToNull(f.get("phone"));
+            if (raw == null) {
+                u.setPhone(null);
+                u.setPhoneHash(null);
+            } else {
+                String norm = normalizePhone(raw);
+                if (norm == null) throw new IllegalArgumentException("Неверный формат телефона");
+                u.setPhone(norm);
+                u.setPhoneHash(pii.hashPhone(norm));
+            }
+        }
         if (f.containsKey("noPassport")) {
             boolean noPass = "true".equalsIgnoreCase(f.get("noPassport"));
             u.setNoPassport(noPass);
@@ -301,14 +310,16 @@ public class UserService implements UserDetailsService {
         if (currentAdminEmail != null && u.getEmail().equalsIgnoreCase(currentAdminEmail)) {
             throw new IllegalArgumentException("Нельзя удалить собственную учётную запись");
         }
-        // Связанные данные не дадут удалить пользователя (FK) — предупреждаем заранее
-        if (folderRepository.existsByOwner(u)
-                || documentRepository.existsByOwner(u)
+        // Документы и подписи удалять каскадно нельзя: это юридически значимые данные.
+        if (documentRepository.existsByOwner(u)
                 || signatureRepository.existsBySignerUserId(u.getId())) {
             throw new IllegalArgumentException(
-                    "У клиента есть разделы/документы/подписи. Сначала удалите его данные, "
-                    + "затем пользователя.");
+                    "У клиента есть документы или подписи. Удаление невозможно — "
+                    + "документы должны быть выгружены и удалены по регламенту.");
         }
+        // Пустые разделы не являются значимыми — удаляем вместе с клиентом,
+        // иначе созданного в админке клиента невозможно удалить.
+        folderRepository.deleteAll(folderRepository.findAllByOwnerOrderByCreatedAtDesc(u));
         userRepository.delete(u);
     }
 

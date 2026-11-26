@@ -100,8 +100,17 @@ public class SignatureVerifier {
         if (s == null || s.isBlank()) {
             throw new IllegalArgumentException("empty base64");
         }
-        // 1. Убрать PEM-обёртку и whitespace
-        String cleaned = s
+        // 1. Снять data-URI префикс (data:application/pkcs7-signature;base64,XXXX)
+        String input = s;
+        String lower = s.stripLeading().toLowerCase(java.util.Locale.ROOT);
+        if (lower.startsWith("data:")) {
+            int comma = input.indexOf(',');
+            if (comma > 0) {
+                input = input.substring(comma + 1);
+            }
+        }
+        // 2. Убрать PEM-обёртку и whitespace
+        String cleaned = input
                 .replaceAll("-----BEGIN[^-]*-----", "")
                 .replaceAll("-----END[^-]*-----", "")
                 .replaceAll("\\s+", "");
@@ -688,21 +697,6 @@ public class SignatureVerifier {
     }
 
     /** Парсит один CRL-файл и кладёт в map (самый свежий по issuer). Возвращает true при успехе. */
-    private boolean loadOneCrl(Path f, CertificateFactory cf,
-                               java.util.Map<String, X509CRL> byIssuer) {
-        try (InputStream is = Files.newInputStream(f)) {
-            X509CRL crl = (X509CRL) cf.generateCRL(is);
-            String issuer = crl.getIssuerX500Principal().getName();
-            X509CRL existing = byIssuer.get(issuer);
-            if (existing == null || crl.getThisUpdate().after(existing.getThisUpdate())) {
-                byIssuer.put(issuer, crl);
-            }
-            return true;
-        } catch (Exception e) {
-            log.debug("CRL parse failed: {} — {}", f.getFileName(), e.getMessage());
-            return false;
-        }
-    }
 
     private List<X509Certificate> buildChain(X509Certificate leaf, CMSSignedData cms,
                                               Set<X509Certificate> truststore) {

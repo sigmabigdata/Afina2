@@ -3,6 +3,8 @@
 # Node присутствует только на стадии сборки и в поставку не входит.
 # ─────────────────────────────────────────────────────────────
 ARG BUILD_IMAGE=node:22-alpine
+ARG BASE_IMAGE=docker.angie.software/angie:1.12.3-alpine
+
 FROM ${BUILD_IMAGE} AS build
 
 WORKDIR /app
@@ -15,7 +17,6 @@ COPY frontend/ ./
 RUN npm run build
 
 # ─────────────────────────────────────────────────────────────
-ARG BASE_IMAGE=docker.angie.software/angie:1.12.3-alpine
 FROM ${BASE_IMAGE}
 
 LABEL org.opencontainers.image.title="Afina2 Web" \
@@ -26,6 +27,7 @@ ENV TZ=Europe/Moscow
 
 COPY --from=build /app/dist /usr/share/angie/html
 COPY deploy/angie.conf /etc/angie/angie.conf
+COPY deploy/security-headers.conf /etc/angie/security-headers.conf
 
 EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

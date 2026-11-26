@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Avatar, Badge, Button, Dropdown, Menu, Tooltip } from 'antd';
 import {
-  AppstoreOutlined, AuditOutlined, BellOutlined, DashboardOutlined, FileTextOutlined,
-  LockOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, MonitorOutlined,
-  MoonOutlined, SafetyCertificateOutlined, SearchOutlined, SettingOutlined,
-  SunOutlined, TeamOutlined, ThunderboltOutlined, UserOutlined,
+  AppstoreOutlined, AuditOutlined, BellOutlined, DashboardOutlined, DatabaseOutlined,
+  FileDoneOutlined, FileTextOutlined, LockOutlined, LogoutOutlined, MenuFoldOutlined,
+  MenuUnfoldOutlined, MonitorOutlined, MoonOutlined, SafetyCertificateOutlined,
+  SearchOutlined, SettingOutlined, SolutionOutlined, SunOutlined,
+  TeamOutlined, ThunderboltOutlined, UserOutlined,
 } from '@ant-design/icons';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../lib/store';
@@ -22,6 +23,9 @@ const titles: Record<string, string> = {
   '/admin/settings': 'Настройки',
   '/admin/monitoring': 'Мониторинг',
   '/admin/gosklyuch': 'Заявки Госключа',
+  '/admin/templates': 'Шаблоны админки',
+  '/admin/poa': 'Доверенности',
+  '/admin/backups': 'Резервные копии',
 };
 
 export default function AppLayout() {
@@ -50,7 +54,8 @@ export default function AppLayout() {
   const selected = useMemo(() => {
     const all = ['/dashboard', '/documents', '/templates', '/gosklyuch', '/profile',
       '/admin/clients', '/admin/audit', '/admin/crl', '/admin/settings',
-      '/admin/monitoring', '/admin/gosklyuch'];
+      '/admin/monitoring', '/admin/gosklyuch', '/admin/templates', '/admin/poa',
+      '/admin/backups'];
     const match = all.filter((p) => location.pathname.startsWith(p)).sort((a, b) => b.length - a.length)[0];
     return [match ?? '/dashboard'];
   }, [location.pathname]);
@@ -80,9 +85,12 @@ export default function AppLayout() {
       children: [
         { key: '/admin/clients', icon: <TeamOutlined />, label: <Link to="/admin/clients">Клиенты</Link> },
         { key: '/admin/gosklyuch', icon: <ThunderboltOutlined />, label: <Link to="/admin/gosklyuch">Заявки Госключа</Link> },
+        { key: '/admin/templates', icon: <FileDoneOutlined />, label: <Link to="/admin/templates">Шаблоны</Link> },
+        { key: '/admin/poa', icon: <SolutionOutlined />, label: <Link to="/admin/poa">Доверенности</Link> },
         { key: '/admin/audit', icon: <AuditOutlined />, label: <Link to="/admin/audit">Аудит</Link> },
         { key: '/admin/crl', icon: <LockOutlined />, label: <Link to="/admin/crl">CRL и доверие</Link> },
         { key: '/admin/monitoring', icon: <MonitorOutlined />, label: <Link to="/admin/monitoring">Мониторинг</Link> },
+        { key: '/admin/backups', icon: <DatabaseOutlined />, label: <Link to="/admin/backups">Резервные копии</Link> },
         { key: '/admin/settings', icon: <SettingOutlined />, label: <Link to="/admin/settings">Настройки</Link> },
       ],
     }] : []),

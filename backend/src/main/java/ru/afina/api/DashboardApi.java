@@ -11,7 +11,6 @@ import ru.afina.entity.GosklyuchOrder;
 import ru.afina.entity.User;
 import ru.afina.gosklyuch.GosklyuchService;
 import ru.afina.repository.DocumentRepository;
-import ru.afina.repository.DocumentSignatureRepository;
 import ru.afina.service.FolderService;
 
 import java.time.Duration;
@@ -34,20 +33,17 @@ public class DashboardApi {
     private static final ZoneId ZONE = ZoneId.systemDefault();
 
     private final DocumentRepository documentRepository;
-    private final DocumentSignatureRepository signatureRepository;
     private final FolderService folderService;
     private final GosklyuchService gosklyuchService;
     private final CurrentUser currentUser;
     private final ApiMapper mapper;
 
     public DashboardApi(DocumentRepository documentRepository,
-                        DocumentSignatureRepository signatureRepository,
                         FolderService folderService,
                         GosklyuchService gosklyuchService,
                         CurrentUser currentUser,
                         ApiMapper mapper) {
         this.documentRepository = documentRepository;
-        this.signatureRepository = signatureRepository;
         this.folderService = folderService;
         this.gosklyuchService = gosklyuchService;
         this.currentUser = currentUser;
@@ -147,9 +143,12 @@ public class DashboardApi {
                 .collect(Collectors.groupingBy(
                         d -> ApiMapper.extensionOf(d.getOriginalName()),
                         Collectors.counting()));
+        // Считаем только подписи своих документов: глобальный count() раскрывал бы
+        // агрегат по другим клиентам
+        long signatures = docs.stream().mapToLong(d -> d.getSignatures().size()).sum();
         return Map.of(
                 "documents", docs.size(),
                 "byExtension", byExtension,
-                "signatures", signatureRepository.count());
+                "signatures", signatures);
     }
 }

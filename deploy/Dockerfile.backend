@@ -8,19 +8,46 @@
 #     --build-arg BASE_IMAGE=registry.company.ru/astra:1.8_jdk17 .
 # ─────────────────────────────────────────────────────────────
 ARG BUILD_IMAGE=maven:3.9-eclipse-temurin-17
+ARG BASE_IMAGE=eclipse-temurin:17-jre
+
 FROM ${BUILD_IMAGE} AS build
 
 WORKDIR /build
 
-# Сначала только зависимости — слой кешируется между сборками
-COPY backend/pom.xml ./
-RUN mvn -B -q -DskipTests dependency:go-offline
+# JCSP — проприетарные библиотеки КриптоПро, в Maven Central отсутствуют.
+# Устанавливаем в локальный .m2 из каталога dist/libs (см. deploy/README.md).
+COPY dist/libs ./libs
+RUN set -e; \
+    install_jar() { \
+        file="$1"; group="$2"; artifact="$3"; version="$4"; \
+        dir="/root/.m2/repository/$(echo "$group" | tr . /)/$artifact/$version"; \
+        mkdir -p "$dir"; \
+        cp "/build/libs/$file" "$dir/$artifact-$version.jar"; \
+        printf '<project><modelVersion>4.0.0</modelVersion><groupId>%s</groupId><artifactId>%s</artifactId><version>%s</version><packaging>jar</packaging></project>' \
+            "$group" "$artifact" "$version" > "$dir/$artifact-$version.pom"; \
+    }; \
+    V=5.0.49800; G=ru.cryptopro.jcsp; \
+    install_jar JCSP.jar        $G jcsp          $V; \
+    install_jar JCP.jar         $G jcp           $V; \
+    install_jar JCryptoP.jar    $G jcryptop      $V; \
+    install_jar JCPRevCheck.jar $G jcp-revcheck  $V; \
+    install_jar JCPRevTools.jar $G jcp-revtools  $V; \
+    install_jar CAdES.jar       $G cades         $V; \
+    install_jar AdES-core.jar   $G ades-core     $V; \
+    install_jar ASN1P.jar       $G asn1p         $V; \
+    install_jar asn1rt.jar      $G asn1rt        $V; \
+    install_jar cmsutil.jar     $G cmsutil       $V; \
+    install_jar JCPxml.jar      $G jcp-xml       $V; \
+    install_jar XAdES.jar       $G xades         $V; \
+    install_jar XMLDSigRI.jar   $G xmldsigri     $V; \
+    install_jar Rutoken.jar     $G rutoken       $V
 
+# Сборка приложения (JCSP уже в локальном .m2)
+COPY backend/pom.xml ./
 COPY backend/src ./src
-RUN mvn -B -q package -DskipTests
+RUN mvn -B -DskipTests package
 
 # ─────────────────────────────────────────────────────────────
-ARG BASE_IMAGE=eclipse-temurin:17-jre
 FROM ${BASE_IMAGE}
 
 LABEL org.opencontainers.image.title="Afina2 Backend" \

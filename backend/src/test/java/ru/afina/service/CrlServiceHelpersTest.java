@@ -85,8 +85,10 @@ class CrlServiceHelpersTest {
     @Test
     @DisplayName("delete: файл отсутствует → не падает (deleteIfExists)")
     void deleteMissingOk() {
-        assertThatCode(() -> service.delete("nonexistent.crl"))
-                .doesNotThrowAnyException();
+        // Отсутствующий файл — 404 на уровне API, а не «молча успешно»
+        assertThatThrownBy(() -> service.delete("nonexistent.crl"))
+                .isInstanceOf(ru.afina.error.NotFoundException.class)
+                .hasMessageContaining("не найден");
     }
 
     @Test
@@ -109,8 +111,9 @@ class CrlServiceHelpersTest {
     @Test
     @DisplayName("deleteMany: несуществующие имена тоже считаются успехом (deleteIfExists идемпотентен)")
     void deleteManyMissing() {
+        // deleteMany пропускает отсутствующие файлы и считает только удалённые
         int n = service.deleteMany(List.of("a.crl", "b.crl"));
-        assertThat(n).isEqualTo(2);  // delete() не бросает при отсутствии файла
+        assertThat(n).isZero();
     }
 
     // ─── saveManual ────────────────────────────────────

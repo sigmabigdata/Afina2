@@ -71,6 +71,11 @@ public class AdminClientApi {
     private final GosklyuchService gosklyuchService;
     private final ru.afina.security.PiiEncryptor pii;
 
+    /** Полная проверка .sig (цепочка+CRL); в демо/тестах выключается. */
+    @org.springframework.beans.factory.annotation.Value(
+            "${app.signature.attachment.require-chain:true}")
+    private boolean attachmentRequireChain = true;
+
     @SuppressWarnings("java:S107")
     public AdminClientApi(UserService userService, UserRepository userRepository,
                           FolderService folderService, DocumentService documentService,
@@ -173,7 +178,9 @@ public class AdminClientApi {
                 req.snils(), req.role() == null ? Role.ROLE_USER : req.role(),
                 req.enabled() == null || req.enabled());
         audit.userCreate(admin.getEmail(), created.getId(), created.getEmail());
-        if (req.role() == null || req.role() == Role.ROLE_USER) {
+        // Клиенту сразу создаём раздел по умолчанию: без него некуда загружать документы.
+        // Пустой раздел удаляется вместе с клиентом (см. UserService.adminDelete).
+        if (created.getRole() == Role.ROLE_USER) {
             folderService.ensureDefault(created);
         }
         return mapper.user(created);
@@ -184,8 +191,13 @@ public class AdminClientApi {
     public UserDto updateClient(@PathVariable Long id, @RequestBody UpdateClientRequest req,
                                 Authentication auth) {
         User admin = currentUser.requireAdmin(auth);
+        // null в запросе означает «не менять»: иначе PATCH без поля enabled
+        // молча разблокировал бы клиента
+        User current = userRepository.findById(id)
+                .orElseThrow(() -> new ru.afina.error.NotFoundException("Клиент не найден"));
+        boolean enabled = req.enabled() == null ? current.isEnabled() : req.enabled();
         User updated = userService.adminUpdate(id, req.email(), req.fullName(), req.phone(),
-                req.snils(), req.role(), req.enabled() == null || req.enabled());
+                req.snils(), req.role(), enabled);
         audit.userUpdate(admin.getEmail(), updated.getId(), updated.getEmail());
         return mapper.user(updated);
     }
@@ -204,7 +216,8 @@ public class AdminClientApi {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteClient(@PathVariable Long id, Authentication auth) {
         User admin = currentUser.requireAdmin(auth);
-        User client = userRepository.findById(id).orElseThrow();
+        User client = userRepository.findById(id)
+                .orElseThrow(() -> new ru.afina.error.NotFoundException("Клиент не найден"));
         userService.adminDelete(id, admin.getEmail());
         audit.userDelete(admin.getEmail(), id, client.getEmail());
     }
@@ -213,7 +226,8 @@ public class AdminClientApi {
     public UserDto toggleClient(@PathVariable Long id, Authentication auth) {
         User admin = currentUser.requireAdmin(auth);
         userService.adminToggle(id);
-        User updated = userRepository.findById(id).orElseThrow();
+        User updated = userRepository.findById(id)
+                .orElseThrow(() -> new ru.afina.error.NotFoundException("Клиент не найден"));
         audit.userUpdate(admin.getEmail(), id, updated.getEmail());
         return mapper.user(updated);
     }
@@ -282,7 +296,8 @@ public class AdminClientApi {
     public FolderDto createFolder(@PathVariable Long id, @RequestBody Map<String, String> body,
                                   Authentication auth) {
         User admin = currentUser.requireAdmin(auth);
-        User client = userRepository.findById(id).orElseThrow();
+        User client = userRepository.findById(id)
+                .orElseThrow(() -> new ru.afina.error.NotFoundException("Клиент не найден"));
         String name = body.get("name");
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Укажите название раздела");
@@ -367,8 +382,10 @@ public class AdminClientApi {
             log.warn("CRL before admin sign failed for doc {}: {}", id, e.getMessage());
         }
         try {
-            Map<String, Object> result = signatureVerifier.verifyDetached(
-                    documentService.getBytes(doc), sig);
+            byte[] content = documentService.getBytes(doc);
+            Map<String, Object> result = attachmentRequireChain
+                    ? signatureVerifier.verifyDetached(content, sig)
+                    : signatureVerifier.verifyDetachedBasic(content, sig);
             String subject = String.valueOf(result.getOrDefault("signerSubject", ""));
             String serial = String.valueOf(result.getOrDefault("signerSerial", ""));
             documentService.addSignature(id, admin, sig, subject, serial);

@@ -60,8 +60,6 @@ public class SslCertificateService {
     private static final String CUSTOM_KEY_PREFIX = "ssl_certificate_key /etc/angie/certs/";
     private static final String KEY_BAK = "privkey.pem.bak";
 
-    static {    }
-
     @Value("${app.angie-certs-path:/opt/afinaz/angie-certs}")
     private String angieCertsPath;
 

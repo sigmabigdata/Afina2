@@ -274,20 +274,6 @@ public class SigningCertificateService {
     }
 
     /** Все известные пути к TTF-шрифтам с поддержкой кириллицы. */
-    private static final String[] FONT_PATHS = {
-        // Linux / Debian / Astra
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-        // macOS
-        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
-        "/Library/Fonts/Arial Unicode.ttf",
-        "/System/Library/Fonts/Supplemental/Arial.ttf",
-        // Windows
-        "C:\\Windows\\Fonts\\arial.ttf",
-        "C:\\Windows\\Fonts\\Arial.ttf",
-    };
 
     /** Возвращает первый существующий шрифт или null. */
     public static Path findCyrillicFont() {

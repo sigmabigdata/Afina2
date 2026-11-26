@@ -81,6 +81,9 @@ public class MonitoringService {
     @Value("${app.file-encryption-key-path:/opt/afinaz/secrets/file.key}")
     private String fileKeyPath;
 
+    @Value("${app.keys-dir:./secrets/keys}")
+    private String keysDir;
+
     @Value("${app.pii-key-path:/opt/afinaz/secrets/pii.key}")
     private String piiKeyPath;
 
@@ -297,15 +300,41 @@ public class MonitoringService {
     @SuppressWarnings("java:S112") // внутренний хелпер: спектр исключений широк
 
     private String checkKeys() throws Exception {
-        Path fk = Paths.get(fileKeyPath);
-        Path pk = Paths.get(piiKeyPath);
-        if (!Files.isReadable(fk)) throw new IllegalStateException("file.key недоступен");
-        if (!Files.isReadable(pk)) throw new IllegalStateException("pii.key недоступен");
-        long fkSize = Files.size(fk);
-        long pkSize = Files.size(pk);
-        if (fkSize != 45) throw new IllegalStateException("file.key размер " + fkSize);
-        if (pkSize != 45) throw new IllegalStateException("pii.key размер " + pkSize);
-        return "file.key + pii.key OK";
+        // Ключи версионированы: secrets/keys/file.key.vN и pii.key.vN.
+        // Проверяем именно актуальную версию (legacy-путь мог остаться только
+        // для миграции со старой установки).
+        Path fk = latestKey("file.key.v");
+        Path pk = latestKey("pii.key.v");
+        if (fk == null) throw new IllegalStateException("файловый ключ не найден в " + keysDir);
+        if (pk == null) throw new IllegalStateException("ключ PII не найден в " + keysDir);
+        if (!Files.isReadable(fk)) throw new IllegalStateException("файловый ключ недоступен");
+        if (!Files.isReadable(pk)) throw new IllegalStateException("ключ PII недоступен");
+        if (Files.size(fk) < 32) throw new IllegalStateException("файловый ключ повреждён");
+        if (Files.size(pk) < 32) throw new IllegalStateException("ключ PII повреждён");
+        return "ключи OK: " + fk.getFileName() + ", " + pk.getFileName();
+    }
+
+    /** Последняя версия ключа с указанным префиксом (null — если файлов нет). */
+    private Path latestKey(String prefix) throws java.io.IOException {
+        Path dir = Paths.get(keysDir);
+        if (!Files.isDirectory(dir)) return null;
+        try (var stream = Files.list(dir)) {
+            return stream
+                    .filter(p -> p.getFileName().toString().startsWith(prefix))
+                    .filter(Files::isRegularFile)
+                    .max(java.util.Comparator.comparingInt(this::keyVersion))
+                    .orElse(null);
+        }
+    }
+
+    private int keyVersion(Path p) {
+        String name = p.getFileName().toString();
+        int idx = name.lastIndexOf(".v") + 2;
+        try {
+            return Integer.parseInt(name.substring(idx));
+        } catch (Exception e) {
+            return -1;
+        }
     }
 
     private String checkDisk() {

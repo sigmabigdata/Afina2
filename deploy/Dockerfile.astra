@@ -1,0 +1,88 @@
+# ─────────────────────────────────────────────────────────────
+# Afina2 · сертифицированный контур
+#
+# Astra Linux SE 1.8 + Axiom JDK Pro 17 + КриптоПро CSP 5.0 R2.
+# JAR собирается на хосте (Axiom JDK 17), образ содержит только runtime.
+#
+# Требуемые артефакты (в .gitignore, предоставляются по лицензии):
+#   dist/axiom/axiomjdk-jdk-pro17*-linux-amd64.tar.gz
+#   dist/cryptopro/linux-amd64_deb.tgz
+#
+# Сборка:
+#   mvn -q -DskipTests package            # в backend/
+#   docker build -f deploy/Dockerfile.astra -t afina2/backend:astra .
+# ─────────────────────────────────────────────────────────────
+ARG BASE_IMAGE=epicmorg/astralinux:1.8-light
+FROM ${BASE_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    LANG=ru_RU.UTF-8 \
+    LC_ALL=ru_RU.UTF-8
+
+# Сетевые таймауты apt: в закрытых контурах зеркала медленные
+RUN printf 'Acquire::Retries "10";\nAcquire::http::Timeout "120";\nAcquire::https::Timeout "120";\n' \
+      > /etc/apt/apt.conf.d/80-afina-timeouts
+
+RUN apt-get update -o Acquire::Retries=10 || apt-get update || true; \
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg tzdata locales \
+        fonts-dejavu-core \
+        openssl \
+        pcscd libpcsclite1 \
+        postgresql-client \
+    && rm -rf /var/lib/apt/lists/* \
+    && localedef -i ru_RU -c -f UTF-8 ru_RU.UTF-8 || true
+
+# ── Axiom JDK Pro 17 (сертифицированная среда исполнения) ──
+COPY dist/axiom/*linux-amd64.tar.gz /tmp/axiom.tgz
+RUN mkdir -p /opt/axiom-jdk \
+ && tar -xzf /tmp/axiom.tgz -C /opt/axiom-jdk --strip-components=1 \
+ && rm -f /tmp/axiom.tgz \
+ && /opt/axiom-jdk/bin/java -version 2>&1
+
+ENV JAVA_HOME=/opt/axiom-jdk
+ENV PATH="/opt/axiom-jdk/bin:${PATH}"
+
+# ── КриптоПро CSP 5.0 R2 (СКЗИ) ──
+COPY dist/cryptopro/linux-amd64_deb.tgz /tmp/cryptopro.tgz
+RUN mkdir -p /tmp/cryptopro && cd /tmp/cryptopro \
+ && tar xzf /tmp/cryptopro.tgz \
+ && cd linux-amd64_deb \
+ && apt-get install -y --allow-unauthenticated --no-install-recommends \
+        ./lsb-cprocsp-base_*.deb \
+        ./lsb-cprocsp-rdr-64_*.deb \
+        ./lsb-cprocsp-kc1-64_*.deb \
+        ./lsb-cprocsp-capilite-64_*.deb \
+        ./cprocsp-compat-debian_*.deb \
+        ./cprocsp-curl-64_*.deb \
+        ./cprocsp-pki-cades-64_*.deb \
+        ./lsb-cprocsp-ca-certs_*.deb \
+ && rm -rf /tmp/cryptopro /var/lib/apt/lists/*
+
+ENV PATH="/opt/cprocsp/bin/amd64:/opt/cprocsp/sbin/amd64:${PATH}"
+ENV LD_LIBRARY_PATH="/opt/cprocsp/lib/amd64"
+
+# ── Пользователь и каталоги ──
+RUN groupadd --system --gid 1001 afina \
+ && useradd --system --uid 1001 --gid afina --home-dir /app --shell /usr/sbin/nologin afina \
+ && mkdir -p /app/storage/documents /app/backups /app/logs /app/crls /app/secrets \
+               /var/opt/cprocsp/tmp /var/opt/cprocsp/keys/afina \
+ && chown -R afina:afina /app /var/opt/cprocsp \
+ && chmod -R 775 /var/opt/cprocsp \
+ && chmod 777 /var/opt/cprocsp/tmp
+
+WORKDIR /app
+COPY --chown=afina:afina backend/target/afina2-backend.jar /app/app.jar
+COPY --chown=afina:afina deploy/scripts/entrypoint.sh /app/entrypoint.sh
+RUN chmod 0555 /app/entrypoint.sh
+
+USER afina
+EXPOSE 8080
+
+ENV JAVA_TOOL_OPTIONS="-Djava.util.prefs.userRoot=/tmp/.java -Djava.util.prefs.systemRoot=/tmp/.java-system" \
+    JAVA_OPTS="-XX:MaxRAMPercentage=75 -XX:+UseG1GC -Dfile.encoding=UTF-8"
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+  CMD curl -fsS http://127.0.0.1:8080/api/v1/health || exit 1
+
+ENTRYPOINT ["/app/entrypoint.sh"]

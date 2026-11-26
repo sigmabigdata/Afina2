@@ -59,6 +59,8 @@ public abstract class ApiTestBase {
     protected FolderService folderService;
     @Autowired
     protected DocumentService documentService;
+    @Autowired
+    protected org.springframework.context.ApplicationContext applicationContext;
 
     // ──────────────────────────── аутентификация ────────────────────────────
 

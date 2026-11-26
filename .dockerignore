@@ -1,0 +1,25 @@
+# Контекст сборки не должен содержать артефакты и секреты
+.git
+.github
+.idea
+.vscode
+**/node_modules
+**/dist
+**/target
+**/*.log
+# Проприетарные артефакты: в контекст попадают только JCSP-библиотеки,
+# нужные стадии сборки (Axiom/CryptoPro — только для образа Astra)
+dist/*
+!dist/libs
+libs/
+axiom-dist/
+cryptopro-dist/
+deploy/.env
+deploy/certs
+deploy/secrets
+storage/
+secrets/
+certs/
+docs/
+*.md
+!deploy/README.md

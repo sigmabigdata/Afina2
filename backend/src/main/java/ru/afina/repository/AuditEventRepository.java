@@ -2,15 +2,19 @@ package ru.afina.repository;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ru.afina.entity.AuditEvent;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
-public interface AuditEventRepository extends JpaRepository<AuditEvent, Long> {
+public interface AuditEventRepository
+        extends JpaRepository<AuditEvent, Long>, JpaSpecificationExecutor<AuditEvent> {
 
     List<AuditEvent> findAllByOrderByEventTimeDesc(Pageable pageable);
 
@@ -43,34 +47,36 @@ public interface AuditEventRepository extends JpaRepository<AuditEvent, Long> {
     /**
      * Постраничный поиск событий журнала с необязательными фильтрами.
      *
-     * <p>Каждый фильтр применяется только когда задан: {@code null} в
-     * параметре означает «без ограничения». Сортировка — новые события первыми.</p>
-     *
-     * @param type   точное значение типа события
-     * @param result точное значение результата
-     * @param actor  шаблон LIKE (нижний регистр) по email субъекта
-     * @param from   нижняя граница времени (включительно)
-     * @param to     верхняя граница времени (включительно)
+     * <p>Реализован через Criteria API, а не через {@code :param is null}:
+     * PostgreSQL не может определить тип NULL-параметра в JPQL-выражении
+     * {@code (:from is null or ...)}, тогда как Criteria подставляет тип из
+     * метамодели. Сортировка — новые события первыми.</p>
      */
-    @Query(value = "select e from AuditEvent e "
-            + "where (:type is null or e.eventType = :type) "
-            + "and (:result is null or e.result = :result) "
-            + "and (:actor is null or lower(e.actorEmail) like :actor) "
-            + "and (:from is null or e.eventTime >= :from) "
-            + "and (:to is null or e.eventTime <= :to) "
-            + "order by e.eventTime desc",
-            countQuery = "select count(e) from AuditEvent e "
-            + "where (:type is null or e.eventType = :type) "
-            + "and (:result is null or e.result = :result) "
-            + "and (:actor is null or lower(e.actorEmail) like :actor) "
-            + "and (:from is null or e.eventTime >= :from) "
-            + "and (:to is null or e.eventTime <= :to)")
-    Page<AuditEvent> search(@Param("type") String type,
-                            @Param("result") String result,
-                            @Param("actor") String actor,
-                            @Param("from") Instant from,
-                            @Param("to") Instant to,
-                            Pageable pageable);
+    default Page<AuditEvent> search(String type, String result, String actor,
+                                    Instant from, Instant to, Pageable pageable) {
+        Specification<AuditEvent> spec = (root, query, cb) -> {
+            List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
+            if (type != null) {
+                predicates.add(cb.equal(root.get("eventType"), type));
+            }
+            if (result != null) {
+                predicates.add(cb.equal(root.get("result"), result));
+            }
+            if (actor != null) {
+                predicates.add(cb.like(cb.lower(root.get("actorEmail")), actor));
+            }
+            if (from != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("eventTime"), from));
+            }
+            if (to != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("eventTime"), to));
+            }
+            query.orderBy(cb.desc(root.get("eventTime")));
+            return predicates.isEmpty() ? cb.conjunction()
+                    : cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        };
+        return findAll(spec, pageable);
+    }
 
     /** Количество событий по каждому типу (для сводки админки). */
     @Query("select e.eventType as eventType, count(e) as total from AuditEvent e "

@@ -368,7 +368,6 @@ class UserServiceTest {
     @DisplayName("adminDelete: ok → delete")
     void adminDeleteOk() {
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
-        when(folderRepository.existsByOwner(user)).thenReturn(false);
         when(documentRepository.existsByOwner(user)).thenReturn(false);
         when(signatureRepository.existsBySignerUserId(1L)).thenReturn(false);
         service.adminDelete(1L, "other@b.ru");
@@ -376,14 +375,14 @@ class UserServiceTest {
     }
 
     @Test
-    @DisplayName("adminDelete: у клиента есть данные → понятная ошибка, не FK-500")
+    @DisplayName("adminDelete: у клиента есть документы → понятная ошибка, не FK-500")
     void adminDeleteWithData() {
         when(userRepository.findById(1L)).thenReturn(Optional.of(user));
-        when(folderRepository.existsByOwner(user)).thenReturn(true);
+        when(documentRepository.existsByOwner(user)).thenReturn(true);
 
         assertThatThrownBy(() -> service.adminDelete(1L, "other@b.ru"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("разделы");
+                .hasMessageContaining("документы");
         verify(userRepository, org.mockito.Mockito.never()).delete(user);
     }
 

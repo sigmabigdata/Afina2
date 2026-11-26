@@ -17,6 +17,13 @@ services:
       POSTGRES_DB: ${DB_NAME:-afina2}
       POSTGRES_USER: ${DB_OWNER_USER:-afina2}
       POSTGRES_PASSWORD: ${DB_OWNER_PASSWORD:?задайте DB_OWNER_PASSWORD}
+      # Роли приложения создаются скриптом deploy/postgres/init/01_roles.sh
+      DB_MIGRATOR_USER: ${DB_MIGRATOR_USER:-afina_migrator}
+      DB_MIGRATOR_PASSWORD: ${DB_MIGRATOR_PASSWORD:?задайте DB_MIGRATOR_PASSWORD}
+      DB_USER: ${DB_USER:-afina_app}
+      DB_PASSWORD: ${DB_PASSWORD:?задайте DB_PASSWORD}
+      DB_AUDITOR_USER: ${DB_AUDITOR_USER:-afina_auditor}
+      DB_AUDITOR_PASSWORD: ${DB_AUDITOR_PASSWORD:-}
       TZ: Europe/Moscow
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -31,6 +38,24 @@ services:
     # Наружу порт не публикуем: база доступна только backend
     security_opt: ["no-new-privileges:true"]
 
+  # Права на тома: приложение работает от непривилегированного пользователя
+  volumes-init:
+    image: ${VOLUMES_INIT_IMAGE:-alpine:3.20}
+    container_name: afina2-volumes-init
+    user: "0:0"
+    restart: "no"
+    command: >
+      sh -c "mkdir -p /data/storage /data/backups /data/logs /data/crls /data/keys
+      && chown -R 1001:1001 /data
+      && chmod 700 /data/keys"
+    volumes:
+      - documents:/data/storage
+      - backups:/data/backups
+      - logs:/data/logs
+      - crls:/data/crls
+      - keys:/data/keys
+    networks: [afina]
+
   backend:
     build:
       context: ..
@@ -43,6 +68,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      volumes-init:
+        condition: service_completed_successfully
     environment:
       SPRING_PROFILES_ACTIVE: prod
       SERVER_PORT: "8080"
@@ -57,7 +84,7 @@ services:
       APP_LOGS_PATH: /app/logs
       CRL_DIR: /app/crls
       CERTS_DIR: /app/certs
-      KEYS_DIR: /app/secrets/keys
+      KEYS_DIR: /app/keys
       ADMINS_FILE: /app/secrets/admins.env
       TRUSTSTORE_PATH: /app/certs/truststore.jks
       TRUSTSTORE_PASSWORD: ${TRUSTSTORE_PASSWORD:-}
@@ -69,6 +96,10 @@ services:
       MAIL_PORT: ${MAIL_PORT:-25}
       MAIL_FROM: ${MAIL_FROM:-noreply@company.ru}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Афина}
+      # Демо-стенд: наполнение тестовыми данными и вход без пароля.
+      # В продуктивной эксплуатации держите оба флага false.
+      APP_SEED_ENABLED: ${APP_SEED_ENABLED:-false}
+      APP_DEV_LOGIN_ENABLED: ${APP_DEV_LOGIN_ENABLED:-false}
       GOSKLYUCH_ENABLED: ${GOSKLYUCH_ENABLED:-false}
       GOSKLYUCH_PROVIDER: ${GOSKLYUCH_PROVIDER:-disabled}
       GOSKLYUCH_SIGNER: ${GOSKLYUCH_SIGNER:-unavailable}
@@ -79,7 +110,11 @@ services:
       - backups:/app/backups
       - logs:/app/logs
       - crls:/app/crls
+      # Ключи шифрования — отдельный том: их нельзя терять, они нужны для
+      # расшифрования файлов и персональных данных. Выгружаются через админку.
+      - keys:/app/keys
       - ${CERTS_DIR_HOST:-./certs}:/app/certs:ro
+      # Секреты (admins.env) — только чтение
       - ${SECRETS_DIR_HOST:-./secrets}:/app/secrets:ro
     networks: [afina]
     security_opt: ["no-new-privileges:true"]
@@ -111,6 +146,7 @@ volumes:
   backups:
   logs:
   crls:
+  keys:
 
 networks:
   afina:

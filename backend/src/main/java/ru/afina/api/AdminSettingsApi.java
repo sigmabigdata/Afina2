@@ -217,17 +217,31 @@ public class AdminSettingsApi {
             String e = part.trim();
             if (e.isEmpty()) continue;
             if ("*".equals(e)) continue;
-            boolean ok = e.matches("\\d{1,3}(\\.\\d{1,3}){3}")
-                    || e.matches("\\d{1,3}(\\.\\d{1,3}){3}/\\d{1,2}")
-                    || (e.contains(":") && e.matches("[0-9a-fA-F:.]+"));
-            if (!ok) return false;
+            String address = e;
+            int prefix = -1;
             if (e.contains("/")) {
+                int slash = e.indexOf('/');
+                address = e.substring(0, slash);
                 try {
-                    int prefix = Integer.parseInt(e.substring(e.indexOf('/') + 1));
-                    if (prefix < 0 || prefix > 32) return false;
+                    prefix = Integer.parseInt(e.substring(slash + 1));
                 } catch (NumberFormatException nfe) {
                     return false;
                 }
+                if (prefix < 0 || prefix > 32) return false;
+            }
+            if (address.contains(":")) {
+                // IPv6: проверяем разбором, без CIDR-арифметики
+                try {
+                    java.net.InetAddress.getByName(address);
+                } catch (Exception ex) {
+                    return false;
+                }
+                continue;
+            }
+            if (!address.matches("\\d{1,3}(\\.\\d{1,3}){3}")) return false;
+            for (String octet : address.split("\\.")) {
+                int value = Integer.parseInt(octet);
+                if (value < 0 || value > 255) return false;
             }
         }
         return true;
