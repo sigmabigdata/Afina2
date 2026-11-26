@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Card, Descriptions, Space, Spin, Tag, Typography } from 'antd';
 import { CheckCircleFilled, CloseCircleFilled, SafetyCertificateOutlined } from '@ant-design/icons';
+import Logo from '../components/Logo';
 import { api } from '../lib/api';
 import { formatDateTime } from '../lib/store';
 
@@ -66,7 +67,9 @@ export default function VerifyPage() {
     <div className="verify-wrap">
       <div className="verify-card">
         <div style={{ textAlign: 'center', marginBottom: 20 }}>
-          <div className="brand-mark" style={{ margin: '0 auto 12px' }}>A</div>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
+            <Logo size={40} />
+          </div>
           <Typography.Title level={3} style={{ margin: 0 }}>Проверка подписи документа</Typography.Title>
           <Typography.Text type="secondary">Публичная страница · Афина</Typography.Text>
         </div>

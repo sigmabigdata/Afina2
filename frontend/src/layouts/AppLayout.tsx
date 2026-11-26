@@ -10,6 +10,7 @@ import {
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../lib/store';
 import CommandPalette from '../components/CommandPalette';
+import Logo from '../components/Logo';
 
 const titles: Record<string, string> = {
   '/dashboard': 'Обзор',
@@ -100,13 +101,11 @@ export default function AppLayout() {
     <div className="app-shell">
       <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
         <Link to="/dashboard" className="brand" onClick={() => setMobileOpen(false)}>
-          <div className="brand-mark">A</div>
-          {!collapsed && (
-            <div>
-              <div className="brand-name">Афина</div>
-              <div className="brand-sub">Документы · подпись · Госключ</div>
-            </div>
-          )}
+          <Logo
+            size={collapsed ? 34 : 38}
+            collapsed={collapsed}
+            tagline="Документы · подпись · Госключ"
+          />
         </Link>
 
         <div className="nav-scroll">

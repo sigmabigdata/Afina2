@@ -75,6 +75,17 @@ public class AuthApi {
     @Value("${app.demo.url:}")
     private String demoUrl;
 
+    /**
+     * Требовать полную проверку цепочки и CRL при входе по сертификату.
+     *
+     * <p>Пока в truststore нет корневых сертификатов УЦ заказчика, строгая
+     * проверка невозможна: подпись челленджа криптографически проверяется
+     * в любом случае, а CN/СНИЛС сверяются с admins.env. После установки
+     * корневых сертификатов флаг нужно вернуть в true.</p>
+     */
+    @Value("${app.auth.cert-login.require-chain:true}")
+    private boolean certLoginRequireChain = true;
+
     /** Одноразовые челленджи: значение → время создания. */
     private final Map<String, Long> challenges = new ConcurrentHashMap<>();
 
@@ -235,8 +246,15 @@ public class AuthApi {
             }
 
             byte[] challengeBytes = req.getChallenge().getBytes(StandardCharsets.UTF_8);
-            Map<String, Object> result =
-                    signatureVerifier.verifyDetached(challengeBytes, req.getSignatureBase64());
+            // Строгий режим: подпись + цепочка + truststore + CRL
+            Map<String, Object> result = certLoginRequireChain
+                    ? signatureVerifier.verifyDetached(challengeBytes, req.getSignatureBase64())
+                    : signatureVerifier.verifyDetachedBasic(challengeBytes,
+                            req.getSignatureBase64());
+            if (!certLoginRequireChain) {
+                log.warn("Вход по сертификату в упрощённом режиме (без проверки цепочки/CRL): {}",
+                        PiiMask.fio(expectedCn));
+            }
 
             String signerCn = String.valueOf(result.getOrDefault("signerSubject", "")).trim();
             if (signerCn.isEmpty() || !signerCn.equalsIgnoreCase(expectedCn)) {

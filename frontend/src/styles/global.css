@@ -80,6 +80,77 @@ a { color: inherit; }
   text-decoration: none;
 }
 
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.logo-mark {
+  position: relative;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  font-family: 'Manrope', system-ui, sans-serif;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+  letter-spacing: -0.03em;
+  background:
+    radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.45), transparent 55%),
+    linear-gradient(135deg, #4f46e5 0%, #7c3aed 55%, #8b5cf6 100%);
+  box-shadow:
+    0 10px 22px -8px rgba(79, 70, 229, 0.75),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  user-select: none;
+}
+
+/* Тонкая диагональная грань — «скол» фирменного знака */
+.logo-mark::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(115deg, transparent 46%, rgba(255, 255, 255, 0.22) 46.5%,
+    rgba(255, 255, 255, 0.22) 53%, transparent 53.5%);
+  pointer-events: none;
+}
+
+.logo-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.logo-word {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+  background: linear-gradient(120deg, #312e81 0%, #4f46e5 45%, #7c3aed 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: #4f46e5;
+}
+
+[data-theme='dark'] .logo-word {
+  background: linear-gradient(120deg, #ffffff 0%, #c7d2fe 55%, #a78bfa 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.logo-tagline {
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .brand-mark {
   width: 42px;
   height: 42px;
@@ -374,4 +445,28 @@ a { color: inherit; }
 @media (max-width: 560px) {
   .stat-grid { grid-template-columns: 1fr; }
   .folder-grid { grid-template-columns: 1fr; }
+}
+
+/* Логотип на фиолетовой панели входа: светлая версия */
+.auth-left .logo-word {
+  background: none;
+  -webkit-text-fill-color: #fff;
+  color: #fff;
+}
+
+.auth-left .logo-tagline {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.auth-left .logo-mark {
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 10px 24px -10px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+}
+
+.auth-left .logo-mark::after {
+  background: linear-gradient(115deg, transparent 46%, rgba(255, 255, 255, 0.28) 46.5%,
+    rgba(255, 255, 255, 0.28) 53%, transparent 53.5%);
 }

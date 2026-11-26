@@ -6,6 +6,7 @@ import {
 } from '@ant-design/icons';
 import { useSearchParams } from 'react-router-dom';
 import CertLoginModal from '../components/CertLoginModal';
+import Logo from '../components/Logo';
 import { useApp } from '../lib/store';
 
 export default function LoginPage() {
@@ -36,11 +37,7 @@ export default function LoginPage() {
       <div className="auth-left">
         <div>
           <div className="brand" style={{ padding: 0 }}>
-            <div className="brand-mark">A</div>
-            <div>
-              <div style={{ fontWeight: 800, fontSize: 20 }}>Афина</div>
-              <div style={{ opacity: .7, fontSize: 12 }}>Afina2 · Secure Workspace</div>
-            </div>
+            <Logo size={44} tagline="Afina2 · Secure Workspace" />
           </div>
           <div style={{ marginTop: 72, maxWidth: 560 }}>
             <div className="auth-badge"><ThunderboltOutlined /> Новая версия · React + Ant Design</div>

@@ -123,3 +123,30 @@ JPA-сущности и DTO (геттеры/сеттеры), Spring-конфиг
 Открытые code smells — стилевые (вложенные try, «слишком много параметров»
 у конструкторов-агрегаторов сервисов, дубли строковых литералов). Они не
 влияют на корректность и безопасность; вынесены в технический долг.
+
+## Фактически развёрнутый стенд (Astra)
+
+Стенд `https://afinasystems.ru` собран из сертифицируемых компонентов:
+
+| Компонент | Фактически |
+|---|---|
+| ОС приложения | Astra Linux SE 1.8 (образ `epicmorg/astralinux:1.8-light`, amd64) |
+| JDK | Axiom JDK Pro 17.0.20.1 (tar.gz из дистрибутива) |
+| СКЗИ | КриптоПро CSP 5.0 R2 — `csptest` подтверждает `AcquireContext: OK` |
+| Криптография приложения | JCSP 5.0.49800 (локальные JAR) |
+| Веб-сервер | Angie 1.12.3, TLS 1.2/1.3, HSTS |
+| СУБД | PostgreSQL 15, раздельные роли migrator/app/auditor |
+| Почта | Postfix на хосте (relay для контейнера) |
+
+Сборка: `deploy/Dockerfile.astra` (multi-stage: Maven → Astra, JDK и CSP
+устанавливаются внутрь образа). Запуск:
+`docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.astra.yml up -d`.
+
+Для сдачи в реестр/сертификацию остаётся:
+1. Заменить community-образ Astra на официальный из `registry.astralinux.ru`.
+2. Перенести PostgreSQL на сертифицированный образ Astra (есть
+   `afinaz-postgres:15-astra`, либо собрать на официальном).
+3. Загрузить в `/app/certs` корневые сертификаты УЦ заказчика и включить
+   строгую проверку цепочки при входе по сертификату
+   (`APP_AUTH_CERT_LOGIN_REQUIRE_CHAIN=true`).
+4. Оформить SBOM/лицензионный отчёт из CI (скрипт `backend/scripts/sbom.sh`).

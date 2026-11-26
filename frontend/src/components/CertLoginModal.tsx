@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Alert, App, Button, Modal, Select, Space, Tag, Typography } from 'antd';
+import { Alert, App, Button, Input, Modal, Select, Space, Tag, Typography } from 'antd';
 import { CloseCircleFilled, SafetyCertificateOutlined } from '@ant-design/icons';
 import { api } from '../lib/api';
 import {
@@ -25,6 +25,7 @@ export default function CertLoginModal({
   const [phase, setPhase] = useState<Phase>('loading');
   const [certs, setCerts] = useState<CertificateInfo[]>([]);
   const [selected, setSelected] = useState<string>();
+  const [manualSnils, setManualSnils] = useState('');
   const [error, setError] = useState<string>();
 
   const init = useCallback(async () => {
@@ -58,8 +59,11 @@ export default function CertLoginModal({
   const handleLogin = async () => {
     const cert = certs.find((c) => c.thumbprint === selected);
     if (!cert || !selected) return;
-    if (!cert.snils) {
-      setError('В сертификате нет СНИЛС — вход по сертификату невозможен');
+    // СНИЛС обычно есть в сертификате; если УЦ его не включил — сотрудник
+    // вводит его сам, сервер сверит с admins.env
+    const snils = cert.snils || manualSnils.replace(/\D/g, '');
+    if (!snils || snils.length !== 11) {
+      setError('В сертификате нет СНИЛС. Введите 11 цифр СНИЛС вручную.');
       setPhase('error');
       return;
     }
@@ -72,7 +76,7 @@ export default function CertLoginModal({
         method: 'POST',
         body: {
           cn: cert.cn,
-          snils: cert.snils,
+          snils,
           challenge,
           signatureBase64: signature,
         },
@@ -122,6 +126,22 @@ export default function CertLoginModal({
                   </Tag>
                 )}
               </Space>
+            );
+          })()}
+          {(() => {
+            const cert = certs.find((c) => c.thumbprint === selected);
+            if (!cert || cert.snils) return null;
+            return (
+              <div>
+                <Typography.Text strong>СНИЛС для сверки с карточкой сотрудника</Typography.Text>
+                <Input
+                  style={{ marginTop: 6 }}
+                  placeholder="11 цифр, например 18962570627"
+                  value={manualSnils}
+                  maxLength={14}
+                  onChange={(e) => setManualSnils(e.target.value)}
+                />
+              </div>
             );
           })()}
           <Button type="primary" size="large" block icon={<SafetyCertificateOutlined />}

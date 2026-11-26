@@ -1,0 +1,14 @@
+# ─────────────────────────────────────────────────────────────
+# Afina2 · сертифицированный контур (Astra Linux SE)
+#
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.astra.yml \
+#     --env-file deploy/.env up -d --build
+#
+# Переопределяет только сборку бэкенда: Astra Linux SE 1.8 + Axiom JDK Pro 17
+# + КриптоПро CSP 5.0 R2. Требуются каталоги dist/{libs,axiom,cryptopro}.
+# ─────────────────────────────────────────────────────────────
+services:
+  backend:
+    build:
+      dockerfile: deploy/Dockerfile.astra
+    image: ${BACKEND_IMAGE:-afina2/backend:astra}

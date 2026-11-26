@@ -499,10 +499,12 @@ public class SignatureVerifier {
                 boolean algGost = isGostAlgName(alg);
                 if (algGost != gostDigest) continue;
                 for (String provider : algGost ? new String[]{"JCSP"}
-                                               : new String[]{"BC", "JCSP"}) {
+                                               : new String[]{"BC", null, "JCSP"}) {
                     try {
-                        byte[] computed = java.security.MessageDigest
-                                .getInstance(alg, provider).digest(data);
+                        java.security.MessageDigest md = provider == null
+                                ? java.security.MessageDigest.getInstance(alg)
+                                : java.security.MessageDigest.getInstance(alg, provider);
+                        byte[] computed = md.digest(data);
                         if (java.util.Arrays.equals(computed, expected)) return true;
                     } catch (Exception ignored) {
                         // провайдер не поддержал алгоритм — пробуем следующий

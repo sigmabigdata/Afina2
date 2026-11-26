@@ -99,6 +99,9 @@ services:
       # Демо-стенд: наполнение тестовыми данными и вход без пароля.
       # В продуктивной эксплуатации держите оба флага false.
       APP_SEED_ENABLED: ${APP_SEED_ENABLED:-false}
+      # Требовать проверку цепочки/CRL при входе по сертификату.
+      # false допустимо только пока в /app/certs нет корневых сертификатов УЦ.
+      APP_AUTH_CERT_LOGIN_REQUIRE_CHAIN: ${APP_AUTH_CERT_LOGIN_REQUIRE_CHAIN:-true}
       APP_DEV_LOGIN_ENABLED: ${APP_DEV_LOGIN_ENABLED:-false}
       GOSKLYUCH_ENABLED: ${GOSKLYUCH_ENABLED:-false}
       GOSKLYUCH_PROVIDER: ${GOSKLYUCH_PROVIDER:-disabled}
@@ -116,6 +119,9 @@ services:
       - ${CERTS_DIR_HOST:-./certs}:/app/certs:ro
       # Секреты (admins.env) — только чтение
       - ${SECRETS_DIR_HOST:-./secrets}:/app/secrets:ro
+    # Доступ к почтовому серверу на хосте (Postfix) по имени host.docker.internal
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks: [afina]
     security_opt: ["no-new-privileges:true"]
     read_only: false
@@ -136,7 +142,15 @@ services:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
     volumes:
+      # Конфигурация монтируется, а не «запекается» в образ:
+      # правки применяются перезапуском контейнера без пересборки
+      - ./angie.conf:/etc/angie/angie.conf:ro
+      - ./security-headers.conf:/etc/angie/security-headers.conf:ro
+      # Сертификат Let's Encrypt (уже есть на хосте, обновляется certbot)
+      - /etc/letsencrypt:/etc/angie/le:ro
       - ${TLS_DIR_HOST:-./certs/tls}:/etc/angie/tls:ro
+      # Каталог ACME-челленджей для продления сертификата
+      - ${ACME_DIR_HOST:-./certs/acme}:/usr/share/angie/acme
     networks: [afina]
     security_opt: ["no-new-privileges:true"]
 

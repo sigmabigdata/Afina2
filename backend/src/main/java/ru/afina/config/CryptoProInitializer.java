@@ -33,6 +33,10 @@ public class CryptoProInitializer {
     public void init() {
         System.setProperty("file.encoding", "UTF-8");
 
+        // BouncyCastle нужен для разбора CMS/ASN.1 и проверки не-ГОСТ подписей.
+        // Регистрируем всегда, даже при выключенном CryptoPro.
+        registerBouncyCastle();
+
         if (!enabled) {
             log.warn("CryptoPro отключён через crypto.pro.enabled=false");
             log.warn("Проверка подписи работать не будет. Это допустимо в dev/test.");
@@ -54,6 +58,14 @@ public class CryptoProInitializer {
      * Устанавливает серийный номер лицензии JCSP через системное свойство.
      * JCSP читает свойство ru.CryptoPro.JCP.license при инициализации провайдера.
      */
+    /** Регистрация BC-провайдера (идемпотентно). */
+    private void registerBouncyCastle() {
+        if (Security.getProvider("BC") == null) {
+            Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
+            log.info("Зарегистрирован провайдер BouncyCastle (CMS/ASN.1)");
+        }
+    }
+
     private void applyJcpLicense() {
         if (jcpLicense != null && !jcpLicense.isBlank()) {
             System.setProperty("ru.CryptoPro.JCP.license", jcpLicense.trim());
