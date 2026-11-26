@@ -51,7 +51,9 @@ class SignatureVisualizationPoaTest {
     @BeforeEach
     void setUp() throws Exception {
         service = new SignatureVisualizationService(documentRepository, visRepo,
-                documentService, poaService, signatureVerifier, tempDir.toString());
+                documentService, poaService, signatureVerifier,
+                org.mockito.Mockito.mock(ru.afina.service.BrandingService.class),
+                tempDir.toString());
         certInfoClass = Class.forName(
                 "ru.afina.service.SignatureVisualizationService$CertInfo");
     }

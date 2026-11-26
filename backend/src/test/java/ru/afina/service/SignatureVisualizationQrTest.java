@@ -42,7 +42,9 @@ class SignatureVisualizationQrTest {
     @BeforeEach
     void setUp() throws Exception {
         service = new SignatureVisualizationService(documentRepository, visRepo,
-                documentService, poaService, signatureVerifier, tempDir.toString());
+                documentService, poaService, signatureVerifier,
+                org.mockito.Mockito.mock(ru.afina.service.BrandingService.class),
+                tempDir.toString());
     }
 
     private static DocumentSignature sig(long id) {

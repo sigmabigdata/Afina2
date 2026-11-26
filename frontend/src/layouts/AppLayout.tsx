@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Avatar, Badge, Button, Dropdown, Menu, Tooltip } from 'antd';
 import {
-  AppstoreOutlined, AuditOutlined, BellOutlined, DashboardOutlined, DatabaseOutlined,
+  AppstoreOutlined, BgColorsOutlined, AuditOutlined, BellOutlined, DashboardOutlined, DatabaseOutlined,
   FileDoneOutlined, FileTextOutlined, LockOutlined, LogoutOutlined, MenuFoldOutlined,
   MenuUnfoldOutlined, MonitorOutlined, MoonOutlined, SafetyCertificateOutlined,
   SearchOutlined, SettingOutlined, SolutionOutlined, SunOutlined,
@@ -24,13 +24,14 @@ const titles: Record<string, string> = {
   '/admin/settings': 'Настройки',
   '/admin/monitoring': 'Мониторинг',
   '/admin/gosklyuch': 'Заявки Госключа',
+  '/admin/branding': 'Брендинг',
   '/admin/templates': 'Шаблоны админки',
   '/admin/poa': 'Доверенности',
   '/admin/backups': 'Резервные копии',
 };
 
 export default function AppLayout() {
-  const { user: currentUser, dark, toggleTheme, logout } = useApp();
+  const { user: currentUser, dark, toggleTheme, logout, branding } = useApp();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [cmdkOpen, setCmdkOpen] = useState(false);
@@ -92,6 +93,7 @@ export default function AppLayout() {
         { key: '/admin/crl', icon: <LockOutlined />, label: <Link to="/admin/crl">CRL и доверие</Link> },
         { key: '/admin/monitoring', icon: <MonitorOutlined />, label: <Link to="/admin/monitoring">Мониторинг</Link> },
         { key: '/admin/backups', icon: <DatabaseOutlined />, label: <Link to="/admin/backups">Резервные копии</Link> },
+        { key: '/admin/branding', icon: <BgColorsOutlined />, label: <Link to="/admin/branding">Брендинг</Link> },
         { key: '/admin/settings', icon: <SettingOutlined />, label: <Link to="/admin/settings">Настройки</Link> },
       ],
     }] : []),
@@ -104,7 +106,9 @@ export default function AppLayout() {
           <Logo
             size={collapsed ? 34 : 38}
             collapsed={collapsed}
-            tagline="Документы · подпись · Госключ"
+            name={branding.name}
+            tagline={branding.tagline}
+            src={branding.logoUrl}
           />
         </Link>
 

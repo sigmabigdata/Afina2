@@ -10,7 +10,7 @@ import Logo from '../components/Logo';
 import { useApp } from '../lib/store';
 
 export default function LoginPage() {
-  const { login } = useApp();
+  const { login, branding } = useApp();
   const { message } = App.useApp();
   const [params] = useSearchParams();
   const [sent, setSent] = useState(false);
@@ -37,7 +37,8 @@ export default function LoginPage() {
       <div className="auth-left">
         <div>
           <div className="brand" style={{ padding: 0 }}>
-            <Logo size={44} tagline="Afina2 · Secure Workspace" />
+            <Logo size={44} name={branding.name} tagline={branding.tagline}
+              src={branding.logoUrl} />
           </div>
           <div style={{ marginTop: 72, maxWidth: 560 }}>
             <div className="auth-badge"><ThunderboltOutlined /> Новая версия · React + Ant Design</div>
@@ -73,7 +74,7 @@ export default function LoginPage() {
         <div className="auth-card">
           <Typography.Title level={3} style={{ marginBottom: 4 }}>Вход в сервис</Typography.Title>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 24 }}>
-            Ссылка для входа придёт на вашу почту. Сотрудники входят по сертификату.
+            Укажите рабочую почту — мы отправим ссылку для входа.
           </Typography.Paragraph>
 
           {tokenError && (

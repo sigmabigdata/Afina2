@@ -91,6 +91,15 @@ public class ApiExceptionHandler {
                 "Файл превышает допустимый размер (50 МБ)", req);
     }
 
+    /** Неизвестный маршрут — 404, а не 500 (иначе выключенные эндпоинты «падают»). */
+    @ExceptionHandler({
+            org.springframework.web.servlet.resource.NoResourceFoundException.class,
+            org.springframework.web.servlet.NoHandlerFoundException.class})
+    public ResponseEntity<Map<String, Object>> handleNotFound(Exception e,
+                                                              HttpServletRequest req) {
+        return body(HttpStatus.NOT_FOUND, "not_found", "Маршрут не найден", req);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleOther(Exception e, HttpServletRequest req) {
         log.error("Необработанная ошибка API {} {}", req.getMethod(), req.getRequestURI(), e);

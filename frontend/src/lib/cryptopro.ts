@@ -36,39 +36,97 @@ export class CryptoProError extends Error {
   }
 }
 
-let pluginPromise: Promise<any> | null = null;
+/**
+ * API плагина. Методы появляются не сразу после загрузки скрипта,
+ * поэтому объект ищется терпеливо (см. waitForApi).
+ */
+export interface CryptoApi {
+  CreateObjectAsync: (name: string) => Promise<any>;
+  // Константы CAPICOM/CADESCOM
+  [key: string]: any;
+}
+
+const API_TIMEOUT_MS = 25_000;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+let pluginPromise: Promise<CryptoApi> | null = null;
+
+/** Ищет объект с CreateObjectAsync среди вариантов, которые отдаёт плагин. */
+function resolveApi(): CryptoApi | null {
+  const global: any = window.cadesplugin;
+  if (!global) return null;
+  const candidates = [global, global.cadesplugin, global.plugin, global.CAdESCOM];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate.CreateObjectAsync === 'function') {
+      return candidate as CryptoApi;
+    }
+  }
+  return null;
+}
+
+/** Ждёт, пока плагин инициализируется и отдаст рабочий API. */
+async function waitForApi(timeoutMs = API_TIMEOUT_MS): Promise<CryptoApi> {
+  const started = Date.now();
+
+  // Некоторые версии API — thenable: дожидаемся его инициализации
+  const global: any = window.cadesplugin;
+  if (global && typeof global.then === 'function') {
+    await Promise.race([
+      Promise.resolve(global).catch(() => undefined),
+      sleep(Math.min(8000, timeoutMs)),
+    ]);
+  }
+
+  while (Date.now() - started < timeoutMs) {
+    const api = resolveApi();
+    if (api) return api;
+    await sleep(150);
+  }
+
+  if (!global) {
+    throw new CryptoProError(
+      'Плагин КриптоПро не установлен. Установите «КриптоПро ЭЦП Browser plug-in» '
+      + 'и КриптоПро CSP, затем перезапустите браузер.',
+    );
+  }
+  throw new CryptoProError(
+    'Плагин КриптоПро загружен, но не отвечает. Проверьте, что расширение включено, '
+    + 'а КриптоПро CSP запущен версии 5.0 R2 или новее.',
+  );
+}
 
 /** Загружает API плагина (один раз). */
-export function loadCryptoPro(): Promise<any> {
+export function loadCryptoPro(): Promise<CryptoApi> {
   if (pluginPromise) return pluginPromise;
-  pluginPromise = new Promise((resolve, reject) => {
-    const finish = () => {
-      const api = window.cadesplugin;
-      if (!api) {
-        reject(new CryptoProError('Плагин КриптоПро не найден'));
-        return;
-      }
-      const ready = api.cadesplugin;
-      if (ready && typeof ready.then === 'function') {
-        ready.then(() => resolve(api)).catch(() => reject(
-          new CryptoProError('Плагин КриптоПро не отвечает. Проверьте установку CSP.')));
-      } else {
-        resolve(api);
-      }
-    };
 
-    if (window.cadesplugin) {
-      finish();
-      return;
+  pluginPromise = (async () => {
+    if (resolveApi()) return resolveApi() as CryptoApi;
+
+    if (!window.cadesplugin) {
+      await new Promise<void>((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = PLUGIN_URL;
+        script.async = true;
+        const timer = setTimeout(() => resolve(), 12_000);
+        script.onload = () => { clearTimeout(timer); resolve(); };
+        script.onerror = () => {
+          clearTimeout(timer);
+          reject(new CryptoProError(
+            'Не удалось загрузить API плагина КриптоПро. '
+            + 'Проверьте доступ к www.cryptopro.ru из браузера.'));
+        };
+        document.head.appendChild(script);
+      });
     }
-    const script = document.createElement('script');
-    script.src = PLUGIN_URL;
-    script.async = true;
-    script.onload = finish;
-    script.onerror = () => reject(new CryptoProError(
-      'Не удалось загрузить плагин КриптоПро. Проверьте доступ к cryptopro.ru.'));
-    document.head.appendChild(script);
+
+    return waitForApi();
+  })().catch((e) => {
+    // даём шанс повторной попытки при следующем открытии окна
+    pluginPromise = null;
+    throw e;
   });
+
   return pluginPromise;
 }
 

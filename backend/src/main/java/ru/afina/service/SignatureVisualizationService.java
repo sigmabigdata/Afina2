@@ -83,6 +83,7 @@ public class SignatureVisualizationService {
     private final DocumentService documentService;
     private final PowerOfAttorneyService poaService;
     private final SignatureVerifier signatureVerifier;
+    private final ru.afina.service.BrandingService branding;
     private final Path storageRoot;
 
     @org.springframework.beans.factory.annotation.Value("${app.base-url}")
@@ -93,12 +94,14 @@ public class SignatureVisualizationService {
                                          DocumentService documentService,
                                          PowerOfAttorneyService poaService,
                                          SignatureVerifier signatureVerifier,
+                                         ru.afina.service.BrandingService branding,
                                          @Value("${app.storage-path}") String storagePath) throws IOException {
         this.documentRepository = documentRepository;
         this.visRepo = visRepo;
         this.documentService = documentService;
         this.poaService = poaService;
         this.signatureVerifier = signatureVerifier;
+        this.branding = branding;
         this.storageRoot = Paths.get(storagePath).toAbsolutePath().normalize();
         Files.createDirectories(storageRoot.resolve(VIS_DIR));
     }
@@ -333,6 +336,19 @@ public class SignatureVisualizationService {
     }
 
     private PDImageXObject loadLogo(PDDocument pdf) {
+        // 1) Логотип заказчика (белый лейбл), если загружен через админку
+        try {
+            var custom = branding.logoPath();
+            if (custom.isPresent()) {
+                try (java.io.InputStream is = java.nio.file.Files.newInputStream(custom.get())) {
+                    return PDImageXObject.createFromByteArray(
+                            pdf, is.readAllBytes(), custom.get().getFileName().toString());
+                }
+            }
+        } catch (Exception e) {
+            log.debug("Логотип заказчика недоступен: {}", e.getMessage());
+        }
+        // 2) Стандартный логотип из ресурсов
         try (java.io.InputStream is = getClass().getResourceAsStream("/static/img/logo.png")) {
             if (is == null) {
                 log.warn("Логотип не найден в /static/img/logo.png, футер будет без лого");

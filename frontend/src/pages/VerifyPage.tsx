@@ -4,7 +4,7 @@ import { Card, Descriptions, Space, Spin, Tag, Typography } from 'antd';
 import { CheckCircleFilled, CloseCircleFilled, SafetyCertificateOutlined } from '@ant-design/icons';
 import Logo from '../components/Logo';
 import { api } from '../lib/api';
-import { formatDateTime } from '../lib/store';
+import { formatDateTime, useApp } from '../lib/store';
 
 interface SignatureInfo {
   subject?: string;
@@ -35,6 +35,7 @@ interface PublicInfo {
 
 /** Публичная страница проверки подписи (открывается по QR-коду). */
 export default function VerifyPage() {
+  const { branding } = useApp();
   const { uuid } = useParams();
   const [info, setInfo] = useState<PublicInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -68,10 +69,10 @@ export default function VerifyPage() {
       <div className="verify-card">
         <div style={{ textAlign: 'center', marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
-            <Logo size={40} />
+            <Logo size={40} name={branding.name} src={branding.logoUrl} />
           </div>
           <Typography.Title level={3} style={{ margin: 0 }}>Проверка подписи документа</Typography.Title>
-          <Typography.Text type="secondary">Публичная страница · Афина</Typography.Text>
+          <Typography.Text type="secondary">Публичная страница · {branding.name}</Typography.Text>
         </div>
 
         <Card>

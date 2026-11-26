@@ -73,8 +73,15 @@ export interface TemplateRow {
   raw: TemplateDto;
 }
 
+export interface Branding {
+  name: string;
+  tagline: string;
+  logoUrl: string | null;
+}
+
 interface AppState {
   user: CurrentUser | null;
+  branding: Branding;
   booting: boolean;
   dark: boolean;
   documents: DocumentItem[];
@@ -99,6 +106,7 @@ interface AppState {
   refreshAudit: () => Promise<void>;
   refreshCrls: () => Promise<void>;
   refreshDashboard: () => Promise<void>;
+  refreshBranding: () => Promise<void>;
   uploadDocument: (file: File, folderId?: number) => Promise<DocumentDto>;
   deleteDocument: (id: number) => Promise<void>;
   signDocument: (id: number, signatureBase64: string) => Promise<Record<string, unknown>>;
@@ -212,6 +220,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [auditEvents, setAuditEvents] = useState<AuditRow[]>([]);
   const [crls, setCrls] = useState<CrlRow[]>([]);
   const [dashboard, setDashboard] = useState<DashboardDto | null>(null);
+  const [branding, setBranding] = useState<Branding>({
+    name: 'Афина',
+    tagline: 'Документы · подпись · Госключ',
+    logoUrl: null,
+  });
 
   const isAdmin = user?.role === 'admin';
 
@@ -311,6 +324,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDashboard(await api<DashboardDto>('/dashboard'));
   }, []);
 
+  // Брендинг публичный: нужен и на странице входа, и в шапке кабинета
+  const refreshBranding = useCallback(async () => {
+    try {
+      const data = await api<{ name: string; tagline: string; logoUrl: string | null }>(
+        '/public/branding');
+      const next: Branding = {
+        name: data.name || 'Афина',
+        tagline: data.tagline || '',
+        logoUrl: data.logoUrl ?? null,
+      };
+      setBranding(next);
+      document.title = `${next.name} · Документы и подпись`;
+      // favicon подхватывает логотип заказчика
+      if (next.logoUrl) {
+        const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+        if (link) link.href = next.logoUrl;
+      }
+    } catch {
+      // брендинг не критичен — остаёмся на значениях по умолчанию
+    }
+  }, []);
+
   // ── де йствия ──
   const login = useCallback(async (email: string) => {
     await api('/auth/login-link', { method: 'POST', body: { email } });
@@ -386,6 +421,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       try {
+        await refreshBranding();
         const me = await api<UserDto>('/auth/me');
         if (cancelled) return;
         setUser(toCurrentUser(me));
@@ -407,19 +443,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })();
     return () => { cancelled = true; };
   }, [refreshDocuments, refreshFolders, refreshTemplates, refreshOrders, refreshDashboard,
-    refreshClients, refreshAudit, refreshCrls]);
+    refreshClients, refreshAudit, refreshCrls, refreshBranding]);
 
   const value = useMemo<AppState>(() => ({
-    user, booting, dark, documents, rawDocuments, folders, templates, orders,
+    user, branding, booting, dark, documents, rawDocuments, folders, templates, orders,
     clients, auditEvents, crls, dashboard, isAdmin, toggleTheme,
     login, logout, refreshMe, refreshDocuments, refreshFolders, refreshTemplates,
     refreshOrders, refreshClients, refreshAudit, refreshCrls, refreshDashboard,
+    refreshBranding,
     uploadDocument, deleteDocument, signDocument, sendToGosklyuch,
     generateFromTemplate, downloadSignature, downloadDocument,
-  }), [user, booting, dark, documents, rawDocuments, folders, templates, orders,
+  }), [user, branding, booting, dark, documents, rawDocuments, folders, templates, orders,
     clients, auditEvents, crls, dashboard, isAdmin, toggleTheme, login, logout,
     refreshMe, refreshDocuments, refreshFolders, refreshTemplates, refreshOrders,
-    refreshClients, refreshAudit, refreshCrls, refreshDashboard, uploadDocument,
+    refreshClients, refreshAudit, refreshCrls, refreshDashboard, refreshBranding, uploadDocument,
     deleteDocument, signDocument, sendToGosklyuch, generateFromTemplate,
     downloadSignature, downloadDocument]);
 

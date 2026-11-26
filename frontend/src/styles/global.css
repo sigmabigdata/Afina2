@@ -83,38 +83,13 @@ a { color: inherit; }
 .logo {
   display: inline-flex;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
   min-width: 0;
 }
 
-.logo-mark {
-  position: relative;
+.logo-mark-svg {
   flex: 0 0 auto;
-  display: grid;
-  place-items: center;
-  font-family: 'Manrope', system-ui, sans-serif;
-  font-weight: 800;
-  line-height: 1;
-  color: #fff;
-  letter-spacing: -0.03em;
-  background:
-    radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.45), transparent 55%),
-    linear-gradient(135deg, #4f46e5 0%, #7c3aed 55%, #8b5cf6 100%);
-  box-shadow:
-    0 10px 22px -8px rgba(79, 70, 229, 0.75),
-    inset 0 1px 0 rgba(255, 255, 255, 0.35);
-  user-select: none;
-}
-
-/* Тонкая диагональная грань — «скол» фирменного знака */
-.logo-mark::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(115deg, transparent 46%, rgba(255, 255, 255, 0.22) 46.5%,
-    rgba(255, 255, 255, 0.22) 53%, transparent 53.5%);
-  pointer-events: none;
+  filter: drop-shadow(0 6px 14px rgba(79, 70, 229, 0.28));
 }
 
 .logo-text {
@@ -127,8 +102,8 @@ a { color: inherit; }
   font-size: 19px;
   font-weight: 800;
   letter-spacing: -0.035em;
-  line-height: 1.1;
-  background: linear-gradient(120deg, #312e81 0%, #4f46e5 45%, #7c3aed 100%);
+  line-height: 1.12;
+  background: linear-gradient(115deg, #312e81 0%, #4f46e5 48%, #8b5cf6 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -136,7 +111,7 @@ a { color: inherit; }
 }
 
 [data-theme='dark'] .logo-word {
-  background: linear-gradient(120deg, #ffffff 0%, #c7d2fe 55%, #a78bfa 100%);
+  background: linear-gradient(115deg, #ffffff 0%, #d7dcff 55%, #c4b5fd 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -149,6 +124,44 @@ a { color: inherit; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Логотип заказчика (белый лейбл).
+   Подложка гарантирует читаемость любого логотипа — и на тёмной теме,
+   и на фиолетовой панели входа. */
+.logo--custom {
+  background: #fff;
+  padding: 6px 10px;
+  border-radius: 10px;
+  box-shadow: 0 6px 16px -10px rgba(15, 23, 42, 0.45);
+}
+
+.logo--custom .logo-img {
+  width: auto;
+  max-width: 200px;
+  object-fit: contain;
+  display: block;
+}
+
+/* На фиолетовой панели входа логотип делаем светлым */
+.auth-left .logo-word {
+  background: none;
+  -webkit-text-fill-color: #fff;
+  color: #fff;
+}
+
+.auth-left .logo-tagline {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.auth-left .logo-mark-svg path {
+  fill: #fff;
+}
+
+.auth-left .logo--custom {
+  background: #fff;
+  padding: 10px 16px;
+  border-radius: 14px;
 }
 
 .brand-mark {

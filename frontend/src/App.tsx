@@ -21,6 +21,7 @@ import AdminGosklyuchPage from './pages/admin/AdminGosklyuchPage';
 import AdminTemplatesPage from './pages/admin/AdminTemplatesPage';
 import AdminPoaPage from './pages/admin/AdminPoaPage';
 import AdminBackupsPage from './pages/admin/AdminBackupsPage';
+import AdminBrandingPage from './pages/admin/AdminBrandingPage';
 import NotFoundPage from './pages/NotFoundPage';
 import { useApp } from './lib/store';
 
@@ -75,6 +76,7 @@ export default function App() {
         <Route path="admin/templates" element={<AdminOnly><AdminTemplatesPage /></AdminOnly>} />
         <Route path="admin/poa" element={<AdminOnly><AdminPoaPage /></AdminOnly>} />
         <Route path="admin/backups" element={<AdminOnly><AdminBackupsPage /></AdminOnly>} />
+        <Route path="admin/branding" element={<AdminOnly><AdminBrandingPage /></AdminOnly>} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
