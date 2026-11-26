@@ -47,9 +47,29 @@
   + КриптоПро CSP 5.0 R2 (все пакеты установлены, `AcquireContext: OK`).
 - Запуск: `docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.astra.yml`
 - Требуются каталоги `dist/libs` (JCSP), `dist/axiom` (JDK), `dist/cryptopro` (CSP).
-- Для полного соответствия: официальный образ Astra из registry.astralinux.ru
-  и PostgreSQL на Astra (образ `afinaz-postgres:15-astra` уже есть локально,
-  можно перенести на сервер).
+- Для полного соответствия: официальный образ Astra из registry.astralinux.ru.
+
+### PostgreSQL на Astra (подготовлено, переключение — по окну обслуживания)
+
+Образ `afinaz-postgres:15-astra` уже загружен на сервер. Он использует
+Debian-кластер (`PGDATA=/var/lib/postgresql/15/main`), поэтому данные нужно
+перенести, а не перемонтировать:
+
+```bash
+# 1. Бэкап (уже есть: /opt/afina2/backups/pre-astra.sql)
+ssh afina2 'docker exec afina2-postgres pg_dump -U afina2 -d afina2 > /opt/afina2/backups/pre-astra.sql'
+
+# 2. Остановить стек и переключить образ + точку монтирования
+#    в docker-compose.astra.yml добавить:
+#      postgres:
+#        image: afinaz-postgres:15-astra
+#        volumes: [ "pgdata:/var/lib/postgresql" ]
+
+# 3. Поднять postgres, затем восстановить данные:
+ssh afina2 'docker exec -i afina2-postgres psql -U afina2 -d afina2 < /opt/afina2/backups/pre-astra.sql'
+```
+
+Проверено, что образ запускается на amd64 и создаёт кластер 15/main.
 
 ## Логотип и интерфейс
 
