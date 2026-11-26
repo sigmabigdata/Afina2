@@ -67,6 +67,7 @@ export default function LoginPage() {
         </div>
         <div style={{ opacity: .55, fontSize: 12 }}>
           Astra Linux SE · Axiom JDK Pro · PostgreSQL · Angie · КриптоПро
+          <span style={{ opacity: .7 }}> · сборка {__BUILD_STAMP__}</span>
         </div>
       </div>
 

@@ -3,8 +3,8 @@ import { Alert, App, Button, Input, Modal, Select, Space, Tag, Typography } from
 import { CloseCircleFilled, SafetyCertificateOutlined } from '@ant-design/icons';
 import { api } from '../lib/api';
 import {
-  CryptoProError, diagnosePlugin, isCryptoProAvailable, listCertificates, signDetached,
-  toBase64, type CertificateInfo, type PluginDiagnostics,
+  CryptoProError, diagnosePlugin, isCryptoProAvailable, listCertificatesWithRetry,
+  signDetached, toBase64, type CertificateInfo, type PluginDiagnostics,
 } from '../lib/cryptopro';
 import { useApp } from '../lib/store';
 
@@ -47,6 +47,7 @@ export default function CertLoginModal({
   const [diag, setDiag] = useState<PluginDiagnostics | null>(null);
   const [diagBusy, setDiagBusy] = useState(false);
   const [waited, setWaited] = useState(0);
+  const [attempt, setAttempt] = useState(0);
 
   const init = useCallback(async () => {
     setPhase('loading');
@@ -65,7 +66,9 @@ export default function CertLoginModal({
           + 'и КриптоПро CSP.',
         );
       }
-      const list = (await listCertificates()).filter((c) => c.hasPrivateKey);
+      const list = (await listCertificatesWithRetry(3, (attempt) => {
+        setAttempt(attempt);
+      })).filter((c) => c.hasPrivateKey);
       setCerts(list);
       if (list.length === 0) {
         throw new CryptoProError('Нет сертификатов с закрытым ключом в хранилище «Личные».');
@@ -133,11 +136,14 @@ export default function CertLoginModal({
         <Alert
           type="info"
           showIcon
-          message={`Поиск сертификатов КриптоПро…${waited > 0 ? ` (${waited} с)` : ''}`}
+          message={`Поиск сертификатов КриптоПро…${waited > 0 ? ` (${waited} с)` : ''}`
+            + `${attempt > 1 ? ` · попытка ${attempt}` : ''}`}
           description={waited >= 4
             ? 'Плагин долго не отвечает. Проверьте, что установлено расширение '
               + '«КриптоПро ЭЦП Browser plug-in» и подключён носитель с ключом.'
-            : 'Обращаемся к плагину КриптоПро и читаем хранилище «Личные».'}
+            : (attempt > 1
+              ? 'Плагин ещё инициализируется — повторяем обращение к хранилищу.'
+              : 'Обращаемся к плагину КриптоПро и читаем хранилище «Личные».')}
         />
       )}
 

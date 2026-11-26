@@ -175,6 +175,24 @@ export function loadCryptoPro(): Promise<CryptoApi> {
   return pluginPromise;
 }
 
+/**
+ * Возвращает рабочий объект API.
+ *
+ * Дублирующая проверка нужна из-за кеша промиса: если рукопожатие с плагином
+ * произошло позже, кэшированный объект мог оказаться неполным.
+ */
+async function requireApi(): Promise<CryptoApi> {
+  const direct = resolveApi();
+  if (direct) return direct;
+  try {
+    return await loadCryptoPro();
+  } catch (e) {
+    const retry = resolveApi();
+    if (retry) return retry;
+    throw e;
+  }
+}
+
 /** Плагин доступен в этом браузере? */
 export async function isCryptoProAvailable(): Promise<boolean> {
   try {
@@ -196,15 +214,54 @@ function extractSnils(subject: string): string {
   return match[1].replace(/\D/g, '');
 }
 
+/**
+ * Читает сертификаты с автоматическими повторами: сразу после открытия
+ * страницы плагин может ещё не принимать вызовы CreateObjectAsync.
+ */
+export async function listCertificatesWithRetry(
+  attempts = 3,
+  onAttempt?: (attempt: number) => void,
+): Promise<CertificateInfo[]> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      onAttempt?.(attempt);
+      return await listCertificates();
+    } catch (e) {
+      lastError = e;
+      // повторяем рукопожатие и ждём
+      try {
+        const global: any = window.cadesplugin;
+        if (global && typeof global.then === 'function') {
+          await Promise.race([
+            new Promise<void>((resolve) => {
+              try { global.then(() => resolve(), () => resolve()); } catch { resolve(); }
+            }),
+            sleep(2000),
+          ]);
+        }
+      } catch {
+        // игнорируем
+      }
+      await sleep(1200 * attempt);
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new CryptoProError('Не удалось прочитать список сертификатов');
+}
+
 /** Читает сертификаты из хранилища «Личные» текущего пользователя. */
 /** Стандартные значения констант CAPICOM/CADESCOM.
  *  Берём из плагина, а если их там нет — используем известные значения. */
-function constants(api: CryptoApi) {
+function constants(api?: CryptoApi | null) {
   // Константы живут на глобальном объекте плагина; если resolveApi вернул
   // внутренний объект — берём их всё равно из window.cadesplugin.
-  const global: any = window.cadesplugin ?? {};
+  // Ни при каких условиях не обращаемся к свойствам undefined.
+  const global: any = (typeof window !== 'undefined' && window.cadesplugin) || {};
+  const source: any = api ?? global;
   const pick = (name: string, fallback: number) =>
-    api[name] ?? global[name] ?? fallback;
+    source?.[name] ?? global[name] ?? fallback;
   return {
     currentUserStore: pick('CAPICOM_CURRENT_USER_STORE', 2),
     openMaxAllowed: pick('CAPICOM_STORE_OPEN_MAXIMUM_ALLOWED', 2),
@@ -219,14 +276,15 @@ function constants(api: CryptoApi) {
 async function openStore(api: CryptoApi): Promise<any> {
   const c = constants(api);
   let lastError: unknown;
-  for (let attempt = 1; attempt <= 5; attempt += 1) {
+  for (let attempt = 1; attempt <= 6; attempt += 1) {
     try {
       const store = await createObject(api, 'CAdESCOM.Store');
       await store.Open(c.currentUserStore, 'My', c.openMaxAllowed);
       return store;
     } catch (e) {
       lastError = e;
-      await sleep(400 * attempt);
+      // Плагину нужно время на «прогрев» после рукопожатия
+      await sleep(600 + 300 * attempt);
     }
   }
   const message = lastError instanceof Error ? lastError.message : String(lastError);
@@ -236,9 +294,13 @@ async function openStore(api: CryptoApi): Promise<any> {
   );
 }
 
+/**
+ * Читает сертификаты с автоматическими повторами: сразу после открытия
+ * страницы плагин может ещё не принимать вызовы CreateObjectAsync.
+ */
 /** Читает сертификаты из хранилища «Личные» текущего пользователя. */
 export async function listCertificates(): Promise<CertificateInfo[]> {
-  const api = await loadCryptoPro();
+  const api = await requireApi();
   const store = await openStore(api);
   try {
     const certificates = await store.Certificates;
@@ -294,7 +356,7 @@ export async function signDetached(
   base64Content: string,
   thumbprint: string,
 ): Promise<string> {
-  const api = await loadCryptoPro();
+  const api = await requireApi();
   const c = constants(api);
   const store = await createObject(api, 'CAdESCOM.Store');
   let certificate: any;
